@@ -1,0 +1,135 @@
+import React, { useState, useMemo } from "react";
+import { motion } from "framer-motion";
+import { Search, Filter, SlidersHorizontal, X } from "lucide-react";
+import CourseCard from "@/components/courses/CourseCard";
+import { COURSES, CATEGORIES } from "@/data/courses";
+import { cn } from "@/lib/utils";
+
+const LEVELS = ["All", "beginner", "intermediate", "advanced"];
+const PRICE_FILTERS = ["All", "Free", "Paid"];
+
+export default function CourseCatalogPage() {
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("All");
+  const [level, setLevel] = useState("All");
+  const [price, setPrice] = useState("All");
+  const [showFilters, setShowFilters] = useState(false);
+
+  const filtered = useMemo(() => {
+    return COURSES.filter((c) => {
+      const matchSearch = !search || c.title.toLowerCase().includes(search.toLowerCase()) || c.tags.some(t => t.toLowerCase().includes(search.toLowerCase()));
+      const matchCat = category === "All" || c.category === category;
+      const matchLevel = level === "All" || c.level === level;
+      const matchPrice = price === "All" || (price === "Free" ? c.price === 0 : c.price > 0);
+      return matchSearch && matchCat && matchLevel && matchPrice;
+    });
+  }, [search, category, level, price]);
+
+  const resetFilters = () => { setSearch(""); setCategory("All"); setLevel("All"); setPrice("All"); };
+  const hasFilters = search || category !== "All" || level !== "All" || price !== "All";
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10">
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-3xl font-display font-bold mb-2">Course <span className="gradient-text">Catalog</span></h1>
+        <p className="text-muted-foreground">Explore {COURSES.length} expert-led DevOps courses. Filter by topic, level, and price.</p>
+      </div>
+
+      {/* Search + Filter Toggle */}
+      <div className="flex gap-3 mb-6">
+        <div className="relative flex-1 max-w-lg">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <input
+            type="text" placeholder="Search courses, topics..."
+            value={search} onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 text-sm bg-card border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all"
+          />
+          {search && <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2"><X className="w-4 h-4 text-muted-foreground" /></button>}
+        </div>
+        <button
+          onClick={() => setShowFilters(!showFilters)}
+          className={cn("flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-xl border transition-colors", showFilters ? "border-primary bg-primary/10 text-primary" : "border-border hover:bg-muted")}
+        >
+          <SlidersHorizontal className="w-4 h-4" /> Filters
+          {hasFilters && <span className="w-2 h-2 rounded-full bg-primary" />}
+        </button>
+        {hasFilters && (
+          <button onClick={resetFilters} className="px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground rounded-xl border border-border hover:bg-muted transition-colors">
+            Reset
+          </button>
+        )}
+      </div>
+
+      {/* Filters */}
+      {showFilters && (
+        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
+          className="mb-6 p-5 rounded-2xl border border-border bg-card space-y-4">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2.5">Category</p>
+            <div className="flex flex-wrap gap-2">
+              {CATEGORIES.map((cat) => (
+                <button key={cat} onClick={() => setCategory(cat)}
+                  className={cn("px-3 py-1 text-sm rounded-lg border transition-colors", category === cat ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-muted-foreground/40 text-muted-foreground")}>
+                  {cat}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2.5">Level</p>
+              <div className="flex flex-wrap gap-2">
+                {LEVELS.map((l) => (
+                  <button key={l} onClick={() => setLevel(l)}
+                    className={cn("px-3 py-1 text-sm rounded-lg border transition-colors capitalize", level === l ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-muted-foreground/40 text-muted-foreground")}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2.5">Price</p>
+              <div className="flex flex-wrap gap-2">
+                {PRICE_FILTERS.map((p) => (
+                  <button key={p} onClick={() => setPrice(p)}
+                    className={cn("px-3 py-1 text-sm rounded-lg border transition-colors", price === p ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-muted-foreground/40 text-muted-foreground")}>
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Category Tabs (quick) */}
+      <div className="flex gap-2 overflow-x-auto pb-2 mb-6 scrollbar-hide">
+        {CATEGORIES.map((cat) => (
+          <button key={cat} onClick={() => setCategory(cat)}
+            className={cn("shrink-0 px-4 py-1.5 text-sm font-medium rounded-full border transition-colors", category === cat ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:text-foreground hover:bg-muted")}>
+            {cat}
+          </button>
+        ))}
+      </div>
+
+      {/* Results */}
+      <div className="flex items-center justify-between mb-5">
+        <p className="text-sm text-muted-foreground"><span className="font-semibold text-foreground">{filtered.length}</span> courses found</p>
+      </div>
+
+      {filtered.length > 0 ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+          {filtered.map((course, i) => <CourseCard key={course.id} course={course} index={i} />)}
+        </div>
+      ) : (
+        <div className="text-center py-20">
+          <Search className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
+          <h3 className="font-semibold text-lg mb-2">No courses found</h3>
+          <p className="text-muted-foreground text-sm mb-4">Try adjusting your search or filters.</p>
+          <button onClick={resetFilters} className="px-4 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground">Reset Filters</button>
+        </div>
+      )}
+    </div>
+  );
+}
