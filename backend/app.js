@@ -29,6 +29,14 @@ app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'OK', message: 'DevOps Academy Backend API is running' });
 });
 
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({
+    status: 'success',
+    message: 'DevOps Academy API Running'
+  });
+});
+
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
