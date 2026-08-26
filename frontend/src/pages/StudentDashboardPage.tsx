@@ -1,9 +1,9 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { BookOpen, Award, Clock, Play, BarChart3, ArrowRight, Trophy, Zap, CheckCircle2, Target } from "lucide-react";
+import { BookOpen, Award, Play, BarChart3, ArrowRight, Trophy, Zap, CheckCircle2, Target, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { COURSES } from "@/data/courses";
+import { apiService, mapBackendCourseToFrontend } from "@/services/apiService";
 import { cn } from "@/lib/utils";
 
 const ACTIVITY = [
@@ -15,20 +15,55 @@ const ACTIVITY = [
 export default function StudentDashboardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [courses, setCourses] = useState<any[]>([]);
+  const [enrollments, setEnrollments] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const enrolledCourses = COURSES.filter(c => user?.enrolledCourses?.includes(c.slug));
-  const completedCourses = COURSES.filter(c => user?.completedCourses?.includes(c.slug));
-  const inProgress = enrolledCourses.filter(c => !user?.completedCourses?.includes(c.slug));
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const [coursesRes, enrollmentsRes] = await Promise.all([
+          apiService.courses.getAll(true),
+          apiService.enrollments.getMyEnrollments()
+        ]);
+        if (coursesRes.success && Array.isArray(coursesRes.data)) {
+          setCourses(coursesRes.data.map(mapBackendCourseToFrontend));
+        }
+        if (enrollmentsRes.success && Array.isArray(enrollmentsRes.data)) {
+          setEnrollments(enrollmentsRes.data);
+        }
+      } catch (err) {
+        console.error("Dashboard data load error:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-4">
+        <Loader2 className="w-10 h-10 text-primary animate-spin" />
+        <p className="text-muted-foreground text-sm">Loading student dashboard...</p>
+      </div>
+    );
+  }
+
+  const enrolledCourses = enrollments.map(e => {
+    const c = courses.find(co => Number(co.id) === Number(e.course_id));
+    return c ? { ...c, progress: e.progress } : null;
+  }).filter(Boolean) as any[];
+
+  const completedCourses = enrolledCourses.filter(c => c.progress >= 100);
+  const inProgress = enrolledCourses.filter(c => c.progress < 100);
 
   const totalProgress = enrolledCourses.length > 0
-    ? Math.round((completedCourses.length / enrolledCourses.length) * 100)
+    ? Math.round(enrolledCourses.reduce((acc, curr) => acc + curr.progress, 0) / enrolledCourses.length)
     : 0;
 
-  const mockProgress: Record<string, number> = {
-    "linux-fundamentals": 100,
-    "docker-mastery": 60,
-    "kubernetes-in-action": 25,
-  };
+  const recommendedCourses = courses.filter(c => !enrollments.some(e => Number(e.course_id) === Number(c.id))).slice(0, 3);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-8">
@@ -38,7 +73,7 @@ export default function StudentDashboardPage() {
           <h1 className="text-2xl font-display font-bold">Welcome back, <span className="gradient-text">{user?.username}</span> 👋</h1>
           <p className="text-muted-foreground text-sm mt-1">Continue your DevOps mastery journey.</p>
         </div>
-        <Link to="/courses" className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-all">
+        <Link to="/courses" className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-all cursor-pointer">
           <BookOpen className="w-4 h-4" /> Browse Courses
         </Link>
       </motion.div>
@@ -48,7 +83,7 @@ export default function StudentDashboardPage() {
         {[
           { label: "Enrolled Courses", value: enrolledCourses.length, icon: BookOpen, color: "text-primary", bg: "bg-primary/10" },
           { label: "Completed", value: completedCourses.length, icon: Trophy, color: "text-yellow-400", bg: "bg-yellow-400/10" },
-          { label: "Certificates", value: user?.certificates?.length || 0, icon: Award, color: "text-secondary", bg: "bg-secondary/10" },
+          { label: "Certificates", value: completedCourses.length, icon: Award, color: "text-secondary", bg: "bg-secondary/10" },
           { label: "Overall Progress", value: `${totalProgress}%`, icon: Target, color: "text-accent", bg: "bg-accent/10" },
         ].map((stat, i) => (
           <motion.div key={i} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}
@@ -69,12 +104,12 @@ export default function StudentDashboardPage() {
           {inProgress.length > 0 ? (
             <div className="space-y-3">
               {inProgress.map((course, i) => {
-                const prog = mockProgress[course.slug] || 0;
+                const prog = course.progress || 0;
                 return (
                   <motion.div key={course.id} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.1 }}
                     className="p-4 rounded-2xl border border-border bg-card hover:border-primary/30 transition-all group">
                     <div className="flex items-center gap-4">
-                      <div className={cn("w-12 h-12 rounded-xl bg-gradient-to-br flex items-center justify-center shrink-0 text-white/30 text-2xl", course.color)}>
+                      <div className={cn("w-12 h-12 rounded-xl bg-gradient-to-br flex items-center justify-center shrink-0 text-white/35 text-2xl", course.color)}>
                         {course.icon}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -91,7 +126,7 @@ export default function StudentDashboardPage() {
                         </div>
                       </div>
                       <button onClick={() => navigate(`/learn/${course.slug}`)}
-                        className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors">
+                        className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors cursor-pointer">
                         <Play className="w-3 h-3" /> Resume
                       </button>
                     </div>
@@ -115,8 +150,8 @@ export default function StudentDashboardPage() {
               <h2 className="font-display font-semibold text-lg mt-6">Completed Courses</h2>
               <div className="space-y-3">
                 {completedCourses.map((course) => (
-                  <div key={course.id} className="p-4 rounded-2xl border border-secondary/20 bg-secondary/5 flex items-center gap-4">
-                    <div className={cn("w-10 h-10 rounded-xl bg-gradient-to-br flex items-center justify-center shrink-0 text-white/30 text-xl", course.color)}>
+                  <div key={course.id} className="p-4 rounded-2xl border border-secondary/20 bg-secondary/5 flex items-center gap-4 animate-fadeIn">
+                    <div className={cn("w-10 h-10 rounded-xl bg-gradient-to-br flex items-center justify-center shrink-0 text-white/35 text-xl", course.color)}>
                       {course.icon}
                     </div>
                     <div className="flex-1">
@@ -125,7 +160,7 @@ export default function StudentDashboardPage() {
                         <CheckCircle2 className="w-3 h-3" /> Completed
                       </div>
                     </div>
-                    <Link to={`/certificate/${course.slug}`} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-yellow-400/10 text-yellow-400 text-xs font-medium hover:bg-yellow-400/20 transition-colors">
+                    <Link to={`/certificate/${course.slug}`} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-yellow-400/10 text-yellow-400 text-xs font-medium hover:bg-yellow-400/20 transition-colors cursor-pointer">
                       <Award className="w-3 h-3" /> Certificate
                     </Link>
                   </div>
@@ -156,22 +191,19 @@ export default function StudentDashboardPage() {
           </div>
 
           {/* Certificates */}
-          {(user?.certificates?.length || 0) > 0 && (
+          {completedCourses.length > 0 && (
             <div className="p-5 rounded-2xl border border-yellow-400/20 bg-yellow-400/5">
               <h3 className="font-display font-semibold text-sm mb-4 flex items-center gap-2 text-yellow-400">
                 <Trophy className="w-4 h-4" /> My Certificates
               </h3>
               <div className="space-y-2">
-                {(user?.certificates || []).map((certSlug) => {
-                  const c = COURSES.find(co => co.slug === certSlug);
-                  return c ? (
-                    <Link key={certSlug} to={`/certificate/${certSlug}`}
-                      className="flex items-center gap-2.5 p-2.5 rounded-lg hover:bg-yellow-400/10 transition-colors">
-                      <Award className="w-4 h-4 text-yellow-400 shrink-0" />
-                      <span className="text-xs font-medium truncate">{c.title}</span>
-                    </Link>
-                  ) : null;
-                })}
+                {completedCourses.map((c) => (
+                  <Link key={c.slug} to={`/certificate/${c.slug}`}
+                    className="flex items-center gap-2.5 p-2.5 rounded-lg hover:bg-yellow-400/10 transition-colors">
+                    <Award className="w-4 h-4 text-yellow-400 shrink-0" />
+                    <span className="text-xs font-medium truncate">{c.title}</span>
+                  </Link>
+                ))}
               </div>
             </div>
           )}
@@ -179,10 +211,10 @@ export default function StudentDashboardPage() {
           {/* Recommended */}
           <div className="p-5 rounded-2xl border border-border bg-card">
             <h3 className="font-display font-semibold text-sm mb-4">Recommended</h3>
-            {COURSES.filter(c => !user?.enrolledCourses?.includes(c.slug)).slice(0, 3).map((course) => (
+            {recommendedCourses.map((course) => (
               <Link key={course.id} to={`/courses/${course.slug}`}
                 className="flex items-center gap-3 py-2.5 hover:opacity-80 transition-opacity group">
-                <div className={cn("w-8 h-8 rounded-lg bg-gradient-to-br flex items-center justify-center text-white/30 text-lg shrink-0", course.color)}>
+                <div className={cn("w-8 h-8 rounded-lg bg-gradient-to-br flex items-center justify-center text-white/35 text-lg shrink-0", course.color)}>
                   {course.icon}
                 </div>
                 <div className="flex-1 min-w-0">

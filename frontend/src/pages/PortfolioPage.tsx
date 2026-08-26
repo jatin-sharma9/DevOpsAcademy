@@ -10,8 +10,8 @@ import {
   SiLinux, SiDocker, SiKubernetes, SiTerraform, SiAnsible, 
   SiJenkins, SiGit, SiPython, SiGo, SiPrometheus, SiGrafana 
 } from "react-icons/si";
-import { sendEmailNotification } from "@/services/emailService";
 import { toast } from "sonner";
+import { apiService } from "@/services/apiService";
 
 const SKILLS = [
   { name: "Kubernetes & EKS", level: 95, category: "Orchestration", icon: SiKubernetes, color: "text-blue-500" },
@@ -89,16 +89,20 @@ export default function PortfolioPage() {
   const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
-    await sendEmailNotification("contact_form", `📩 Contact Inquiry: ${formData.subject}`, {
-      fullName: formData.name,
-      email: formData.email,
-      subject: formData.subject,
-      message: formData.message,
-      dateTime: new Date().toLocaleString(),
-    });
-    setSubmitting(false);
-    toast.success("Thank you! Your message has been sent to Jatin Sharma.");
-    setFormData({ name: "", email: "", subject: "", message: "" });
+    try {
+      const res = await apiService.contact.submit(formData);
+      if (res.success) {
+        toast.success("Thank you! Your message has been sent to Jatin Sharma.");
+        setFormData({ name: "", email: "", subject: "", message: "" });
+      } else {
+        toast.error("Failed to send message. Please try again.");
+      }
+    } catch (error) {
+      console.error("Contact submit error:", error);
+      toast.error("An error occurred. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (

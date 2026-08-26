@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Trash2, BookOpen, Layers, Check, ArrowLeft, Image, Sparkles } from "lucide-react";
+import { Plus, Trash2, ArrowLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { apiService } from "@/services/apiService";
 
 export default function AdminAddCoursePage() {
   const navigate = useNavigate();
@@ -11,25 +12,47 @@ export default function AdminAddCoursePage() {
   const [level, setLevel] = useState("Intermediate");
   const [price, setPrice] = useState("0");
   const [durationHours, setDurationHours] = useState("12");
-  const [objectives, setObjectives] = useState<string[]>(["Master core concepts", "Deploy hands-on labs"]);
-  const [newObj, setNewObj] = useState("");
   const [published, setPublished] = useState(true);
+  const [loading, setLoading] = useState(false);
 
-  const handleAddObjective = () => {
-    if (!newObj.trim()) return;
-    setObjectives([...objectives, newObj.trim()]);
-    setNewObj("");
-  };
-
-  const handleRemoveObjective = (index: number) => {
-    setObjectives(objectives.filter((_, i) => i !== index));
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) { toast.error("Course title is required"); return; }
-    toast.success(`Course "${title}" created successfully!`);
-    navigate("/admin/courses");
+    if (!title.trim()) {
+      toast.error("Course title is required");
+      return;
+    }
+
+    const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+
+    const courseData = {
+      title,
+      slug,
+      shortDescription: shortDesc,
+      description: shortDesc,
+      category,
+      level: level.toLowerCase() as 'beginner' | 'intermediate' | 'advanced',
+      price: Number(price),
+      durationHours: Number(durationHours),
+      isPublished: published,
+      isPro: Number(price) > 0,
+      isFeatured: false,
+    };
+
+    setLoading(true);
+    try {
+      const res = await apiService.courses.create(courseData);
+      if (res.success) {
+        toast.success(`Course "${title}" created successfully!`);
+        navigate("/admin/courses");
+      } else {
+        toast.error("Failed to create course");
+      }
+    } catch (err: any) {
+      console.error("Create course error:", err);
+      toast.error(err.response?.data?.message || "Failed to create course");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -40,7 +63,7 @@ export default function AdminAddCoursePage() {
         </button>
         <div>
           <h1 className="text-2xl font-display font-bold">Add New Course</h1>
-          <p className="text-muted-foreground text-sm">Create a new course with modules, objectives, and thumbnail.</p>
+          <p className="text-muted-foreground text-sm">Create a new course with details and initial configuration.</p>
         </div>
       </div>
 
@@ -72,24 +95,26 @@ export default function AdminAddCoursePage() {
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="space-y-1.5">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <div className="space-y-1.5 col-span-1">
               <label className="text-xs font-medium text-muted-foreground">Category</label>
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 className="w-full px-3 py-2.5 text-sm bg-input border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50"
               >
-                <option value="OS & Shell">OS & Shell</option>
-                <option value="Version Control">Version Control</option>
-                <option value="Containerization">Containerization</option>
-                <option value="Orchestration">Orchestration</option>
-                <option value="Infrastructure as Code">Infrastructure as Code</option>
-                <option value="CI/CD Pipelines">CI/CD Pipelines</option>
+                <option value="Linux">Linux</option>
+                <option value="Git">Git</option>
+                <option value="Docker">Docker</option>
+                <option value="Kubernetes">Kubernetes</option>
+                <option value="CI/CD">CI/CD</option>
+                <option value="IaC">IaC</option>
+                <option value="Configuration Management">Configuration Management</option>
+                <option value="Cloud">Cloud</option>
               </select>
             </div>
 
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 col-span-1">
               <label className="text-xs font-medium text-muted-foreground">Level</label>
               <select
                 value={level}
@@ -102,7 +127,18 @@ export default function AdminAddCoursePage() {
               </select>
             </div>
 
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 col-span-1">
+              <label className="text-xs font-medium text-muted-foreground">Duration (Hours)</label>
+              <input
+                type="number"
+                required
+                value={durationHours}
+                onChange={(e) => setDurationHours(e.target.value)}
+                className="w-full px-3 py-2.5 text-sm bg-input border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+            </div>
+
+            <div className="space-y-1.5 col-span-1">
               <label className="text-xs font-medium text-muted-foreground">Price (₹ 0 for Free)</label>
               <input
                 type="number"
@@ -111,41 +147,6 @@ export default function AdminAddCoursePage() {
                 className="w-full px-3 py-2.5 text-sm bg-input border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50"
               />
             </div>
-          </div>
-        </div>
-
-        {/* Learning Objectives */}
-        <div className="p-6 rounded-2xl border border-border bg-card space-y-4">
-          <h2 className="font-display font-semibold text-base">Learning Objectives</h2>
-          
-          <div className="flex gap-2">
-            <input
-              type="text"
-              placeholder="Add objective (e.g. Build multi-stage Docker builds)"
-              value={newObj}
-              onChange={(e) => setNewObj(e.target.value)}
-              className="flex-1 px-3.5 py-2 text-sm bg-input border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50"
-            />
-            <button
-              type="button"
-              onClick={handleAddObjective}
-              className="px-4 py-2 rounded-xl bg-primary/10 text-primary border border-primary/20 font-semibold text-xs hover:bg-primary/20 transition-colors flex items-center gap-1"
-            >
-              <Plus className="w-4 h-4" /> Add
-            </button>
-          </div>
-
-          <div className="space-y-2">
-            {objectives.map((obj, index) => (
-              <div key={index} className="flex items-center justify-between p-3 rounded-xl border border-border bg-muted/30 text-xs">
-                <span className="flex items-center gap-2">
-                  <Check className="w-3.5 h-3.5 text-secondary" /> {obj}
-                </span>
-                <button type="button" onClick={() => handleRemoveObjective(index)} className="text-muted-foreground hover:text-destructive transition-colors">
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
           </div>
         </div>
 
@@ -159,15 +160,23 @@ export default function AdminAddCoursePage() {
             type="checkbox"
             checked={published}
             onChange={(e) => setPublished(e.target.checked)}
-            className="w-5 h-5 rounded border-border text-primary focus:ring-primary"
+            className="w-5 h-5 rounded border-border text-primary focus:ring-primary cursor-pointer"
           />
         </div>
 
         <button
           type="submit"
-          className="w-full py-3.5 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-all shadow-lg"
+          disabled={loading}
+          className="w-full py-3.5 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
         >
-          Create Course
+          {loading ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Creating Course...
+            </>
+          ) : (
+            "Create Course"
+          )}
         </button>
       </form>
     </div>

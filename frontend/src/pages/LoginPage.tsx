@@ -8,7 +8,7 @@ import { toast } from "sonner";
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -18,26 +18,41 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
     setLoading(true);
-    const ok = await login(email, password);
+    const ok = await login(identifier, password);
     setLoading(false);
     if (ok) {
       toast.success("Welcome back!");
+      // Redirect based on user role
+      const stored = localStorage.getItem("da-user");
+      if (stored) {
+        try {
+          const u = JSON.parse(stored);
+          if (u.role === "admin" || u.role === "instructor") {
+            navigate("/admin");
+            return;
+          }
+        } catch {}
+      }
       navigate("/dashboard");
     } else {
-      setError("Invalid email or password. Try: admin@devops.academy / admin123");
+      setError("Invalid credentials. Try: Jatin.Sharma93 / J@tinS93 or jatin / user123");
     }
   };
 
-  const quickLogin = async (role: "admin" | "instructor" | "student") => {
+  const quickLogin = async (role: "admin" | "student") => {
     const creds = {
-      admin: { email: "admin@devops.academy", password: "admin123" },
-      instructor: { email: "instructor@devops.academy", password: "instructor123" },
-      student: { email: "student@devops.academy", password: "student123" },
+      admin: { identifier: "Jatin.Sharma93", password: "J@tinS93" },
+      student: { identifier: "jatin", password: "user123" },
     }[role];
     setLoading(true);
-    const ok = await login(creds.email, creds.password);
+    const ok = await login(creds.identifier, creds.password);
     setLoading(false);
-    if (ok) { toast.success(`Logged in as ${role}`); navigate(role === "admin" || role === "instructor" ? "/admin" : "/dashboard"); }
+    if (ok) {
+      toast.success(`Logged in as ${role}`);
+      navigate(role === "admin" ? "/admin" : "/dashboard");
+    } else {
+      toast.error("Failed to connect to backend");
+    }
   };
 
   return (
@@ -56,7 +71,7 @@ export default function LoginPage() {
             Your DevOps career starts <span className="gradient-text">here.</span>
           </h2>
           <p className="text-muted-foreground leading-relaxed">
-            Access 120+ courses, hands-on labs, and earn certificates recognized by top tech companies.
+            Access expert-led courses, hands-on tracking, and earn certificates recognized by top tech companies.
           </p>
         </div>
         <div className="relative space-y-3">
@@ -78,37 +93,26 @@ export default function LoginPage() {
 
           {/* Quick Demo Login */}
           <div className="p-4 rounded-xl bg-muted/60 border border-border space-y-2">
-            <p className="text-xs font-semibold text-muted-foreground">⚡ Quick Admin & User Login:</p>
+            <p className="text-xs font-semibold text-muted-foreground">⚡ Quick Demo Database Profiles:</p>
             <div className="flex flex-wrap gap-1.5 text-xs">
               <button
-                onClick={async () => {
-                  setLoading(true);
-                  const ok = await login("jatinsharma932002@gmail.com", "J@tinS93");
-                  setLoading(false);
-                  if (ok) { toast.success("Logged in as Default Admin"); navigate("/admin"); }
-                }}
-                className="px-2.5 py-1 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 font-medium hover:bg-red-500/20 transition-colors"
+                onClick={() => quickLogin("admin")}
+                className="px-2.5 py-1 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 font-medium hover:bg-red-500/20 transition-colors cursor-pointer"
               >
-                👑 Default Admin (Jatin.Sharma93)
-              </button>
-              <button
-                onClick={() => quickLogin("instructor")}
-                className="px-2.5 py-1 rounded-lg bg-accent/10 text-accent border border-accent/20 font-medium hover:bg-accent/20 transition-colors"
-              >
-                🎓 Instructor
+                👑 Admin (Jatin.Sharma93)
               </button>
               <button
                 onClick={() => quickLogin("student")}
-                className="px-2.5 py-1 rounded-lg bg-primary/10 text-primary border border-primary/20 font-medium hover:bg-primary/20 transition-colors"
+                className="px-2.5 py-1 rounded-lg bg-primary/10 text-primary border border-primary/20 font-medium hover:bg-primary/20 transition-colors cursor-pointer"
               >
-                🧑‍🎓 Student
+                🧑‍🎓 Student (jatin)
               </button>
             </div>
           </div>
 
           <div className="relative">
             <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border" /></div>
-            <div className="relative flex justify-center"><span className="px-3 bg-background text-xs text-muted-foreground">or continue with email</span></div>
+            <div className="relative flex justify-center"><span className="px-3 bg-background text-xs text-muted-foreground">or continue credentials</span></div>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -120,11 +124,11 @@ export default function LoginPage() {
             )}
 
             <div className="space-y-1.5">
-              <label className="text-sm font-medium" htmlFor="email">Email address</label>
+              <label className="text-sm font-medium" htmlFor="identifier">Username or Email</label>
               <input
-                id="email" type="email" autoComplete="email" required
-                value={email} onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
+                id="identifier" type="text" required
+                value={identifier} onChange={(e) => setIdentifier(e.target.value)}
+                placeholder="Jatin.Sharma93 or you@example.com"
                 className="w-full px-3.5 py-2.5 text-sm bg-input border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all"
               />
             </div>
@@ -148,7 +152,7 @@ export default function LoginPage() {
             </div>
 
             <button type="submit" disabled={loading}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-all disabled:opacity-70">
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-all disabled:opacity-70 cursor-pointer">
               {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Signing in...</> : "Sign in"}
             </button>
           </form>

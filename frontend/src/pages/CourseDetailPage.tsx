@@ -1,52 +1,109 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Star, Users, Clock, BookOpen, Play, CheckCircle2, Lock,
-  ChevronDown, ArrowLeft, Award, Zap
+  ChevronDown, ArrowLeft, Award, Zap, Loader2
 } from "lucide-react";
-import { getCourseBySlug } from "@/data/courses";
 import { useAuth } from "@/contexts/AuthContext";
-import { sendEmailNotification } from "@/services/emailService";
 import { cn, getLevelBadge } from "@/lib/utils";
 import { toast } from "sonner";
+import { apiService, mapBackendCourseToFrontend } from "@/services/apiService";
 
 export default function CourseDetailPage() {
   const { slug } = useParams<{ slug: string }>();
-  const { user, isAuthenticated, updateUser } = useAuth();
+  const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
-  const course = getCourseBySlug(slug || "");
-  const [openSections, setOpenSections] = useState<Set<string>>(new Set([course?.sections[0]?.id || ""]));
 
-  if (!course) return (
-    <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4">
-      <h2 className="text-2xl font-bold">Course not found</h2>
-      <Link to="/courses" className="text-primary hover:underline flex items-center gap-1"><ArrowLeft className="w-4 h-4" /> Back to courses</Link>
-    </div>
-  );
+  const [course, setCourse] = useState<any | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [enrollmentDetails, setEnrollmentDetails] = useState<{
+    isEnrolled: boolean;
+    progress: number;
+  } | null>(null);
+  const [openSections, setOpenSections] = useState<Set<string>>(new Set());
 
-  const isEnrolled = user?.enrolledCourses?.includes(course.slug);
-  const isCompleted = user?.completedCourses?.includes(course.slug);
-  const totalLessons = course.sections.reduce((acc, s) => acc + s.lessons.length, 0);
+  // Load Course and Enrollment Status
+  useEffect(() => {
+    const fetchDetails = async () => {
+      if (!slug) return;
+      try {
+        setLoading(true);
+        const res = await apiService.courses.getBySlug(slug);
+        if (res.success && res.data) {
+          const mapped = mapBackendCourseToFrontend(res.data);
+          setCourse(mapped);
+          
+          if (mapped.sections && mapped.sections[0]) {
+            setOpenSections(new Set([mapped.sections[0].id]));
+          }
 
-  const handleEnroll = () => {
-    if (!isAuthenticated) { navigate("/login"); return; }
-    const enrolled = [...(user?.enrolledCourses || [])];
-    if (!enrolled.includes(course.slug)) {
-      updateUser({ enrolledCourses: [...enrolled, course.slug] });
+          // If authenticated, get course progress/enrollment status
+          if (isAuthenticated) {
+            try {
+              const progressRes = await apiService.enrollments.getCourseProgress(res.data.id);
+              if (progressRes.success && progressRes.data) {
+                setEnrollmentDetails({
+                  isEnrolled: progressRes.data.isEnrolled,
+                  progress: progressRes.data.progress
+                });
+              }
+            } catch (err) {
+              console.error("Error fetching enrollment progress:", err);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error loading course details:", err);
+        toast.error("Failed to load course details");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchDetails();
+  }, [slug, isAuthenticated]);
 
-      // Trigger Email Notification to Admin
-      sendEmailNotification("course_enrollment", `🎓 Course Enrollment: ${course.title}`, {
-        fullName: user?.username || "Student",
-        email: user?.email || "N/A",
-        courseName: course.title,
-        dateTime: new Date().toLocaleString(),
-      });
+  if (loading) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4">
+        <Loader2 className="w-10 h-10 text-primary animate-spin" />
+        <p className="text-muted-foreground text-sm">Loading course details...</p>
+      </div>
+    );
+  }
 
-      toast.success("You're enrolled! Let's start learning.");
+  if (!course) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4">
+        <h2 className="text-2xl font-bold">Course not found</h2>
+        <Link to="/courses" className="text-primary hover:underline flex items-center gap-1">
+          <ArrowLeft className="w-4 h-4" /> Back to courses
+        </Link>
+      </div>
+    );
+  }
+
+  const isEnrolled = enrollmentDetails?.isEnrolled || false;
+  const isCompleted = isEnrolled && enrollmentDetails?.progress === 100;
+  const totalLessons = course.sections.reduce((acc: number, s: any) => acc + s.lessons.length, 0);
+
+  const handleEnroll = async () => {
+    if (!isAuthenticated) {
+      navigate("/login");
+      return;
+    }
+    
+    try {
+      if (!isEnrolled) {
+        const res = await apiService.enrollments.enroll(Number(course.id));
+        if (res.success) {
+          toast.success("You're enrolled! Let's start learning.");
+        }
+      }
       navigate(`/learn/${course.slug}`);
-    } else {
-      navigate(`/learn/${course.slug}`);
+    } catch (error: any) {
+      console.error("Enroll error:", error);
+      toast.error(error.response?.data?.message || "Failed to enroll in course. Please try again.");
     }
   };
 
@@ -96,7 +153,7 @@ export default function CourseDetailPage() {
             <div className="p-6 rounded-2xl border border-border bg-card">
               <h2 className="text-xl font-display font-bold mb-5 flex items-center gap-2"><Award className="w-5 h-5 text-primary" /> What You'll Learn</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {course.whatYouLearn.map((item, i) => (
+                {course.whatYouLearn.map((item: string, i: number) => (
                   <div key={i} className="flex items-start gap-2.5 text-sm">
                     <CheckCircle2 className="w-4 h-4 text-secondary shrink-0 mt-0.5" />{item}
                   </div>
@@ -115,7 +172,7 @@ export default function CourseDetailPage() {
                 <span>{course.durationHours}h total</span>
               </div>
               <div className="space-y-2">
-                {course.sections.map((section) => (
+                {course.sections.map((section: any) => (
                   <div key={section.id} className="border border-border rounded-xl overflow-hidden">
                     <button
                       onClick={() => toggleSection(section.id)}
@@ -129,8 +186,8 @@ export default function CourseDetailPage() {
                     </button>
                     {openSections.has(section.id) && (
                       <div className="divide-y divide-border">
-                        {section.lessons.map((lesson) => (
-                          <div key={lesson.id} className="lesson-sidebar-item px-4 py-3">
+                        {section.lessons.map((lesson: any) => (
+                          <div key={lesson.id} className="flex items-center gap-4 px-4 py-3">
                             <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center shrink-0",
                               lesson.type === "quiz" ? "bg-accent/15 text-accent" :
                               lesson.type === "lab" ? "bg-secondary/15 text-secondary" : "bg-primary/15 text-primary")}>
@@ -139,7 +196,7 @@ export default function CourseDetailPage() {
                                <Play className="w-3.5 h-3.5" />}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm truncate">{lesson.title}</p>
+                              <p className="text-sm truncate font-medium">{lesson.title}</p>
                               <p className="text-xs text-muted-foreground capitalize">{lesson.type} · {lesson.duration} min</p>
                             </div>
                             {lesson.preview && !isEnrolled ? (
@@ -160,7 +217,7 @@ export default function CourseDetailPage() {
             <div>
               <h2 className="text-xl font-display font-bold mb-4">Requirements</h2>
               <ul className="space-y-2">
-                {course.requirements.map((req, i) => (
+                {course.requirements.map((req: string, i: number) => (
                   <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
                     <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground mt-2 shrink-0" />{req}
                   </li>
@@ -199,12 +256,14 @@ export default function CourseDetailPage() {
                       <Play className="w-4 h-4" />
                       {isEnrolled ? "Continue Learning" : course.price === 0 ? "Enroll Free" : "Enroll Now"}
                     </button>
-                    <Link
-                      to={`/learn/${course.slug}`}
-                      className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-primary/30 text-primary font-medium text-sm hover:bg-primary/10 transition-colors"
-                    >
-                      <Play className="w-4 h-4" /> Watch Lesson 1 Tutorial
-                    </Link>
+                    {course.sections[0]?.lessons[0]?.youtubeUrl && (
+                      <Link
+                        to={`/learn/${course.slug}`}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-primary/30 text-primary font-medium text-sm hover:bg-primary/10 transition-colors"
+                      >
+                        <Play className="w-4 h-4" /> Watch Lesson 1 Tutorial
+                      </Link>
+                    )}
                   </div>
                 )}
                 <div className="space-y-3 pt-1">

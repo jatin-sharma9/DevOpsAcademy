@@ -1,29 +1,50 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Search, Filter, SlidersHorizontal, X } from "lucide-react";
+import { Search, SlidersHorizontal, X, Loader2 } from "lucide-react";
 import CourseCard from "@/components/courses/CourseCard";
-import { COURSES, CATEGORIES } from "@/data/courses";
+import { CATEGORIES } from "@/data/courses";
 import { cn } from "@/lib/utils";
+import { apiService, mapBackendCourseToFrontend } from "@/services/apiService";
 
 const LEVELS = ["All", "beginner", "intermediate", "advanced"];
 const PRICE_FILTERS = ["All", "Free", "Paid"];
 
 export default function CourseCatalogPage() {
+  const [courses, setCourses] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const [level, setLevel] = useState("All");
   const [price, setPrice] = useState("All");
   const [showFilters, setShowFilters] = useState(false);
 
+  useEffect(() => {
+    const fetchCourses = async () => {
+      try {
+        setLoading(true);
+        const res = await apiService.courses.getAll(true); // fetch published courses
+        if (res.success && Array.isArray(res.data)) {
+          const mapped = res.data.map(mapBackendCourseToFrontend);
+          setCourses(mapped);
+        }
+      } catch (err) {
+        console.error("Error loading courses:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchCourses();
+  }, []);
+
   const filtered = useMemo(() => {
-    return COURSES.filter((c) => {
-      const matchSearch = !search || c.title.toLowerCase().includes(search.toLowerCase()) || c.tags.some(t => t.toLowerCase().includes(search.toLowerCase()));
+    return courses.filter((c) => {
+      const matchSearch = !search || c.title.toLowerCase().includes(search.toLowerCase()) || c.tags.some((t: string) => t.toLowerCase().includes(search.toLowerCase()));
       const matchCat = category === "All" || c.category === category;
       const matchLevel = level === "All" || c.level === level;
       const matchPrice = price === "All" || (price === "Free" ? c.price === 0 : c.price > 0);
       return matchSearch && matchCat && matchLevel && matchPrice;
     });
-  }, [search, category, level, price]);
+  }, [courses, search, category, level, price]);
 
   const resetFilters = () => { setSearch(""); setCategory("All"); setLevel("All"); setPrice("All"); };
   const hasFilters = search || category !== "All" || level !== "All" || price !== "All";
@@ -33,7 +54,7 @@ export default function CourseCatalogPage() {
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-display font-bold mb-2">Course <span className="gradient-text">Catalog</span></h1>
-        <p className="text-muted-foreground">Explore {COURSES.length} expert-led DevOps courses. Filter by topic, level, and price.</p>
+        <p className="text-muted-foreground">Explore expert-led DevOps courses. Filter by topic, level, and price.</p>
       </div>
 
       {/* Search + Filter Toggle */}
@@ -118,7 +139,12 @@ export default function CourseCatalogPage() {
         <p className="text-sm text-muted-foreground"><span className="font-semibold text-foreground">{filtered.length}</span> courses found</p>
       </div>
 
-      {filtered.length > 0 ? (
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-20">
+          <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
+          <p className="text-muted-foreground text-sm">Loading course catalog...</p>
+        </div>
+      ) : filtered.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
           {filtered.map((course, i) => <CourseCard key={course.id} course={course} index={i} />)}
         </div>

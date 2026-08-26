@@ -1,26 +1,23 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { sendEmailNotification } from "@/services/emailService";
+import { apiService } from "@/services/apiService";
 
-export type UserRole = "admin" | "instructor" | "student";
+export type UserRole = "admin" | "instructor" | "student" | "user";
 
 export interface User {
-  id: string;
+  id: number | string;
   username: string;
   email: string;
   role: UserRole;
   avatar?: string;
   bio?: string;
-  enrolledCourses?: string[];
-  completedCourses?: string[];
-  certificates?: string[];
-  joinedAt: string;
+  joinedAt?: string;
 }
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string, role?: UserRole) => Promise<boolean>;
+  login: (emailOrUsername: string, password: string) => Promise<boolean>;
   register: (data: RegisterData) => Promise<boolean>;
   logout: () => void;
   updateUser: (data: Partial<User>) => void;
@@ -35,83 +32,66 @@ interface RegisterData {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-// Mock users database for demo
-const MOCK_USERS: Record<string, User & { password: string }> = {
-  "jatinsharma932002@gmail.com": {
-    id: "usr_admin_default",
-    username: "Jatin.Sharma93",
-    email: "jatinsharma932002@gmail.com",
-    password: "J@tinS93",
-    role: "admin",
-    avatar: "",
-    bio: "Chief Platform Administrator & Lead DevOps Architect.",
-    joinedAt: "2026-08-25",
-  },
-  "jatin.sharma93": {
-    id: "usr_admin_default",
-    username: "Jatin.Sharma93",
-    email: "jatinsharma932002@gmail.com",
-    password: "J@tinS93",
-    role: "admin",
-    avatar: "",
-    bio: "Chief Platform Administrator & Lead DevOps Architect.",
-    joinedAt: "2026-08-25",
-  },
-  "instructor@devops.academy": {
-    id: "usr_inst_001",
-    username: "jatin_sharma",
-    email: "instructor@devops.academy",
-    password: "instructor123",
-    role: "instructor",
-    avatar: "",
-    bio: "Senior DevOps Engineer & Cloud Architect. AWS Certified.",
-    joinedAt: "2024-02-15",
-  },
-  "student@devops.academy": {
-    id: "usr_student_001",
-    username: "devops_learner",
-    email: "student@devops.academy",
-    password: "student123",
-    role: "student",
-    avatar: "",
-    bio: "Aspiring DevOps Engineer. Learning Kubernetes & Terraform.",
-    enrolledCourses: ["linux-fundamentals", "docker-mastery", "kubernetes-in-action"],
-    completedCourses: ["linux-fundamentals"],
-    certificates: ["linux-fundamentals"],
-    joinedAt: "2024-03-01",
-  },
-};
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Sync session on mount
   useEffect(() => {
-    const stored = localStorage.getItem("da-user");
-    if (stored) {
-      try {
-        setUser(JSON.parse(stored));
-      } catch {
-        localStorage.removeItem("da-user");
+    const fetchSession = async () => {
+      const token = localStorage.getItem("da-token");
+      const storedUser = localStorage.getItem("da-user");
+
+      if (token && storedUser) {
+        try {
+          // Verify with backend to get latest user info
+          const data = await apiService.auth.getMe();
+          if (data.success && data.user) {
+            const mappedUser: User = {
+              ...data.user,
+              role: data.user.role === "user" ? "student" : data.user.role
+            };
+            setUser(mappedUser);
+            localStorage.setItem("da-user", JSON.stringify(mappedUser));
+          } else {
+            setUser(JSON.parse(storedUser));
+          }
+        } catch (error) {
+          console.error("Failed to restore session from server:", error);
+          // Fall back to localStorage if offline, or log out if explicitly unauthenticated
+          setUser(JSON.parse(storedUser));
+        }
       }
-    }
-    setIsLoading(false);
+      setIsLoading(false);
+    };
+
+    fetchSession();
   }, []);
 
-  const login = async (identifier: string, password: string): Promise<boolean> => {
+  const login = async (emailOrUsername: string, password: string): Promise<boolean> => {
     setIsLoading(true);
-    // Simulate API call delay
-    await new Promise((r) => setTimeout(r, 800));
+    try {
+      const payload: { email?: string; username?: string; password?: string } = { password };
+      if (emailOrUsername.includes("@")) {
+        payload.email = emailOrUsername;
+      } else {
+        payload.username = emailOrUsername;
+      }
 
-    const key = identifier.toLowerCase();
-    const mockUser = MOCK_USERS[key] || Object.values(MOCK_USERS).find(u => u.username.toLowerCase() === key);
-    if (mockUser && mockUser.password === password) {
-      const { password: _, ...userData } = mockUser;
-      setUser(userData);
-      localStorage.setItem("da-user", JSON.stringify(userData));
-      localStorage.setItem("da-token", `mock-jwt-${userData.id}`);
-      setIsLoading(false);
-      return true;
+      const data = await apiService.auth.login(payload);
+      if (data.success && data.token && data.user) {
+        const mappedUser: User = {
+          ...data.user,
+          role: data.user.role === "user" ? "student" : data.user.role
+        };
+        setUser(mappedUser);
+        localStorage.setItem("da-token", data.token);
+        localStorage.setItem("da-user", JSON.stringify(mappedUser));
+        setIsLoading(false);
+        return true;
+      }
+    } catch (error) {
+      console.error("Login API error:", error);
     }
     setIsLoading(false);
     return false;
@@ -119,33 +99,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = async (data: RegisterData): Promise<boolean> => {
     setIsLoading(true);
-    await new Promise((r) => setTimeout(r, 1000));
+    try {
+      // Backend expects role 'user' instead of 'student'
+      const payload = {
+        username: data.username,
+        email: data.email,
+        password: data.password,
+        role: data.role === "student" ? "user" : data.role
+      };
 
-    const newUser: User = {
-      id: `usr_${Date.now()}`,
-      username: data.username,
-      email: data.email,
-      role: data.role || "student",
-      enrolledCourses: [],
-      completedCourses: [],
-      certificates: [],
-      joinedAt: new Date().toISOString(),
-    };
-
-    setUser(newUser);
-    localStorage.setItem("da-user", JSON.stringify(newUser));
-    localStorage.setItem("da-token", `mock-jwt-${newUser.id}`);
-
-    // Trigger Admin Notification
-    sendEmailNotification("user_registration", `🔔 New User Registered: ${newUser.username}`, {
-      fullName: newUser.username,
-      email: newUser.email,
-      role: newUser.role,
-      dateTime: new Date().toLocaleString(),
-    });
-
+      const resData = await apiService.auth.register(payload);
+      if (resData.success && resData.token && resData.user) {
+        const mappedUser: User = {
+          ...resData.user,
+          role: resData.user.role === "user" ? "student" : resData.user.role
+        };
+        setUser(mappedUser);
+        localStorage.setItem("da-token", resData.token);
+        localStorage.setItem("da-user", JSON.stringify(mappedUser));
+        setIsLoading(false);
+        return true;
+      }
+    } catch (error) {
+      console.error("Registration API error:", error);
+    }
     setIsLoading(false);
-    return true;
+    return false;
   };
 
   const logout = () => {

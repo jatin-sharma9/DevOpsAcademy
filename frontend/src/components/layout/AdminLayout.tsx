@@ -1,12 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
 import {
-  Terminal, LayoutDashboard, BookOpen, Users, FileText,
-  BarChart3, Settings, LogOut, Menu, X, ChevronLeft, Bell, Mail,
-  PlusCircle, FolderTree, GraduationCap, Award, MessageSquare
+  Terminal, LayoutDashboard, BookOpen, Users, FileText, LogOut, Menu, ChevronLeft, Bell, Mail,
+  PlusCircle, FolderTree, GraduationCap, Award, MessageSquare, Settings
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { apiService } from "@/services/apiService";
 import { cn } from "@/lib/utils";
 
 const ADMIN_NAV = [
@@ -14,7 +13,6 @@ const ADMIN_NAV = [
   { label: "Users", href: "/admin/users", icon: Users },
   { label: "Courses", href: "/admin/courses", icon: BookOpen },
   { label: "Add Course", href: "/admin/courses/add", icon: PlusCircle },
-  { label: "Manage Courses", href: "/admin/courses", icon: BookOpen },
   { label: "Categories", href: "/admin/categories", icon: FolderTree },
   { label: "Enrollments", href: "/admin/enrollments", icon: GraduationCap },
   { label: "Certificates", href: "/admin/certificates", icon: Award },
@@ -24,6 +22,17 @@ const ADMIN_NAV = [
   { label: "Settings", href: "/admin/settings", icon: Settings },
 ];
 
+const getRelativeTime = (dateStr: string) => {
+  const date = new Date(dateStr);
+  const diff = Date.now() - date.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return date.toLocaleDateString();
+};
+
 export default function AdminLayout() {
   const { user, logout } = useAuth();
   const location = useLocation();
@@ -31,13 +40,48 @@ export default function AdminLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
-  const [notifications, setNotifications] = useState([
-    { id: "1", title: "New User Registered", message: "User 'alex_dev' just registered on the platform.", time: "5m ago", read: false },
-    { id: "2", title: "Course Review", message: "New 5-star review submitted for Kubernetes course.", time: "1h ago", read: false },
-    { id: "3", title: "System Alert", message: "Database backup completed successfully.", time: "4h ago", read: true },
-  ]);
+  const [notifications, setNotifications] = useState<any[]>([]);
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const fetchNotifications = async () => {
+    try {
+      const res = await apiService.admin.getNotifications();
+      if (res.success && Array.isArray(res.data)) {
+        setNotifications(res.data);
+      }
+    } catch (err) {
+      console.error("Failed to load admin notifications:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const unreadCount = notifications.filter(n => !n.is_read).length;
+
+  const handleMarkAllRead = async () => {
+    try {
+      const res = await apiService.admin.markAllNotificationsRead();
+      if (res.success) {
+        setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+      }
+    } catch (err) {
+      console.error("Mark all read error:", err);
+    }
+  };
+
+  const handleMarkAsRead = async (id: number) => {
+    try {
+      const res = await apiService.admin.markNotificationRead(id);
+      if (res.success) {
+        setNotifications(prev => prev.map(n => Number(n.id) === id ? { ...n, is_read: true } : n));
+      }
+    } catch (err) {
+      console.error("Mark read error:", err);
+    }
+  };
 
   const handleLogout = () => { logout(); navigate("/"); };
 
@@ -76,7 +120,7 @@ export default function AdminLayout() {
           <ChevronLeft className="w-4 h-4 shrink-0" />
           {(!collapsed || mobile) && <span>Back to Site</span>}
         </Link>
-        <button onClick={handleLogout} className={cn("sidebar-link w-full text-destructive hover:bg-destructive/10", collapsed && !mobile ? "justify-center px-2" : "")} title={collapsed && !mobile ? "Logout" : undefined}>
+        <button onClick={handleLogout} className={cn("sidebar-link w-full text-destructive hover:bg-destructive/10 cursor-pointer", collapsed && !mobile ? "justify-center px-2" : "")} title={collapsed && !mobile ? "Logout" : undefined}>
           <LogOut className="w-4 h-4 shrink-0" />
           {(!collapsed || mobile) && <span>Logout</span>}
         </button>
@@ -93,7 +137,7 @@ export default function AdminLayout() {
 
       {/* Mobile Sidebar */}
       {mobileOpen && (
-        <div className="fixed inset-0 z-50 flex md:hidden">
+        <div className="fixed inset-0 z-50 flex md:hidden animate-fadeIn">
           <div className="w-64 h-full"><Sidebar mobile /></div>
           <div className="flex-1 bg-black/50" onClick={() => setMobileOpen(false)} />
         </div>
@@ -104,10 +148,10 @@ export default function AdminLayout() {
         {/* Top Bar */}
         <header className="h-16 border-b border-border flex items-center justify-between px-4 sm:px-6 bg-card/80 backdrop-blur shrink-0">
           <div className="flex items-center gap-3">
-            <button onClick={() => { setCollapsed(!collapsed); setMobileOpen(true); }} className="p-1.5 rounded-lg hover:bg-muted transition-colors md:hidden">
+            <button onClick={() => { setCollapsed(!collapsed); setMobileOpen(true); }} className="p-1.5 rounded-lg hover:bg-muted transition-colors md:hidden cursor-pointer">
               <Menu className="w-5 h-5" />
             </button>
-            <button onClick={() => setCollapsed(!collapsed)} className="hidden md:block p-1.5 rounded-lg hover:bg-muted transition-colors">
+            <button onClick={() => setCollapsed(!collapsed)} className="hidden md:block p-1.5 rounded-lg hover:bg-muted transition-colors cursor-pointer">
               <Menu className="w-4 h-4" />
             </button>
             <h1 className="font-display font-semibold text-sm">
@@ -118,7 +162,7 @@ export default function AdminLayout() {
             <div className="relative">
               <button
                 onClick={() => setNotifOpen(!notifOpen)}
-                className="relative p-2 rounded-lg hover:bg-muted transition-colors"
+                className="relative p-2 rounded-lg hover:bg-muted transition-colors cursor-pointer"
                 aria-label="Notifications"
               >
                 <Bell className="w-4 h-4" />
@@ -130,7 +174,7 @@ export default function AdminLayout() {
               {notifOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setNotifOpen(false)} />
-                  <div className="absolute right-0 top-full mt-2 w-80 rounded-xl border border-border bg-card shadow-2xl overflow-hidden z-50">
+                  <div className="absolute right-0 top-full mt-2 w-80 rounded-xl border border-border bg-card shadow-2xl overflow-hidden z-50 animate-fadeIn">
                     <div className="p-3 border-b border-border flex items-center justify-between bg-muted/30">
                       <div className="flex items-center gap-2">
                         <Bell className="w-3.5 h-3.5 text-primary" />
@@ -138,30 +182,36 @@ export default function AdminLayout() {
                       </div>
                       {unreadCount > 0 && (
                         <button
-                          onClick={() => setNotifications(prev => prev.map(n => ({ ...n, read: true })))}
-                          className="text-[10px] text-primary hover:underline font-medium"
+                          onClick={handleMarkAllRead}
+                          className="text-[10px] text-primary hover:underline font-medium cursor-pointer"
                         >
                           Mark all read
                         </button>
                       )}
                     </div>
                     <div className="max-h-64 overflow-y-auto divide-y divide-border/50">
-                      {notifications.map((n) => (
-                        <div
-                          key={n.id}
-                          onClick={() => setNotifications(prev => prev.map(item => item.id === n.id ? { ...item, read: true } : item))}
-                          className={cn("p-2.5 text-left cursor-pointer transition-colors flex gap-2 items-start", n.read ? "bg-card hover:bg-muted/40" : "bg-primary/5 hover:bg-primary/10")}
-                        >
-                          <div className={cn("w-1.5 h-1.5 rounded-full mt-1.5 shrink-0", n.read ? "bg-transparent" : "bg-primary")} />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-1">
-                              <p className="text-xs font-semibold truncate">{n.title}</p>
-                              <span className="text-[9px] text-muted-foreground">{n.time}</span>
+                      {notifications.length > 0 ? (
+                        notifications.map((n) => (
+                          <div
+                            key={n.id}
+                            onClick={() => handleMarkAsRead(Number(n.id))}
+                            className={cn("p-2.5 text-left cursor-pointer transition-colors flex gap-2 items-start", n.is_read ? "bg-card hover:bg-muted/40" : "bg-primary/5 hover:bg-primary/10")}
+                          >
+                            <div className={cn("w-1.5 h-1.5 rounded-full mt-1.5 shrink-0", n.is_read ? "bg-transparent" : "bg-primary")} />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-1">
+                                <p className="text-xs font-semibold truncate">{n.title}</p>
+                                <span className="text-[9px] text-muted-foreground">{getRelativeTime(n.created_at)}</span>
+                              </div>
+                              <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{n.message}</p>
                             </div>
-                            <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{n.message}</p>
                           </div>
+                        ))
+                      ) : (
+                        <div className="p-4 text-center text-xs text-muted-foreground">
+                          No notifications found
                         </div>
-                      ))}
+                      )}
                     </div>
                   </div>
                 </>
