@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   ArrowRight, Play, Terminal, CheckCircle2, Star, Users, BookOpen,
-  Trophy, Zap, Shield, Code, BarChart3, Clock, Award
+  Trophy, Zap, Shield, Code, BarChart3, Clock, Award, Network
 } from "lucide-react";
 import {
   SiLinux, SiDocker, SiKubernetes, SiTerraform, SiAnsible,
@@ -12,12 +12,14 @@ import {
 import { motion as m } from "framer-motion";
 import CourseCard from "@/components/courses/CourseCard";
 import { COURSES } from "@/data/courses";
+import { apiService, mapBackendCourseToFrontend } from "@/services/apiService";
 
 const TOOLS = [
   { icon: SiLinux, name: "Linux", color: "text-orange-400" },
   { icon: SiGit, name: "Git", color: "text-red-400" },
   { icon: SiDocker, name: "Docker", color: "text-blue-400" },
   { icon: SiKubernetes, name: "Kubernetes", color: "text-blue-500" },
+  { icon: Network, name: "Networking", color: "text-cyan-400" },
   { icon: SiJenkins, name: "Jenkins", color: "text-red-500" },
   { icon: SiTerraform, name: "Terraform", color: "text-purple-400" },
   { icon: SiAnsible, name: "Ansible", color: "text-red-600" },
@@ -71,7 +73,26 @@ function AnimatedCounter({ target, suffix = "" }: { target: number; suffix?: str
 }
 
 export default function LandingPage() {
-  const featuredCourses = COURSES.filter((c) => c.isFeatured).slice(0, 4);
+  const [courses, setCourses] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchCourses = async () => {
+      try {
+        const res = await apiService.courses.getAll(true);
+        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+          setCourses(res.data.map(mapBackendCourseToFrontend));
+        } else {
+          setCourses(COURSES);
+        }
+      } catch (err) {
+        console.error("Error loading featured courses, falling back to static:", err);
+        setCourses(COURSES);
+      }
+    };
+    fetchCourses();
+  }, []);
+
+  const featuredCourses = courses.filter((c) => c.isFeatured).slice(0, 4);
 
   return (
     <div className="overflow-hidden">
@@ -194,12 +215,13 @@ export default function LandingPage() {
           </p>
           <div className="flex flex-wrap justify-center gap-6">
             {TOOLS.map((tool, i) => (
-              <motion.div key={i} initial={{ opacity: 0, scale: 0.8 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }} transition={{ delay: i * 0.06 }}
-                className="flex flex-col items-center gap-2 group cursor-pointer">
-                <div className={`text-4xl ${tool.color} group-hover:scale-110 transition-transform`}>
-                  <tool.icon />
-                </div>
-                <span className="text-xs font-mono text-muted-foreground group-hover:text-foreground transition-colors">{tool.name}</span>
+              <motion.div key={i} initial={{ opacity: 0, scale: 0.8 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }} transition={{ delay: i * 0.06 }}>
+                <Link to={`/courses`} className="flex flex-col items-center gap-2 group cursor-pointer">
+                  <div className={`text-4xl ${tool.color} group-hover:scale-110 transition-transform`}>
+                    <tool.icon />
+                  </div>
+                  <span className="text-xs font-mono text-muted-foreground group-hover:text-foreground transition-colors">{tool.name}</span>
+                </Link>
               </motion.div>
             ))}
           </div>
@@ -225,6 +247,83 @@ export default function LandingPage() {
           </div>
           <div className="mt-8 text-center sm:hidden">
             <Link to="/courses" className="inline-flex items-center gap-1.5 text-sm text-primary font-medium">View all courses <ArrowRight className="w-4 h-4" /></Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── NETWORKING FOR DEVOPS SPOTLIGHT ─── */}
+      <section className="py-16 relative overflow-hidden border-y border-border/80 bg-gradient-to-b from-card/30 via-cyan-950/10 to-card/30">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <div className="rounded-3xl border border-cyan-500/20 bg-card/70 backdrop-blur-xl p-8 sm:p-12 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center relative z-10">
+              <div className="lg:col-span-7 space-y-5">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-mono font-semibold">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                  New Interactive Section
+                </div>
+                <h2 className="text-3xl sm:text-4xl font-display font-extrabold tracking-tight">
+                  Networking for <span className="gradient-text bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 text-transparent bg-clip-text">DevOps & Cloud</span>
+                </h2>
+                <p className="text-muted-foreground text-sm sm:text-base leading-relaxed">
+                  Tired of "It's always DNS"? Level up your production debugging with our new dedicated Networking section. Explore interactive OSI & TCP/IP stack layers, live CIDR subnet calculators with AWS VPC rules, DNS trace simulators, and Kubernetes CNI comparisons.
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2">
+                  <div className="p-3 rounded-xl bg-muted/40 border border-border">
+                    <div className="text-xs font-mono text-cyan-400 font-bold">Subnet Calculator</div>
+                    <div className="text-[11px] text-muted-foreground">AWS 5-IP VPC planning</div>
+                  </div>
+                  <div className="p-3 rounded-xl bg-muted/40 border border-border">
+                    <div className="text-xs font-mono text-blue-400 font-bold">K8s CNI Matrix</div>
+                    <div className="text-[11px] text-muted-foreground">Calico, Cilium, Flannel</div>
+                  </div>
+                  <div className="p-3 rounded-xl bg-muted/40 border border-border">
+                    <div className="text-xs font-mono text-indigo-400 font-bold">CLI Command Studio</div>
+                    <div className="text-[11px] text-muted-foreground">ss, curl, tcpdump, dig</div>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-3 pt-2">
+                  <Link
+                    to="/courses/networking-for-devops"
+                    className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-all hover:scale-105"
+                  >
+                    Explore Networking Course <ArrowRight className="w-4 h-4" />
+                  </Link>
+                  <Link
+                    to="/learn/networking-for-devops"
+                    className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-border font-semibold text-sm hover:bg-muted transition-all"
+                  >
+                    Start Free Lessons
+                  </Link>
+                </div>
+              </div>
+
+              <div className="lg:col-span-5">
+                <div className="rounded-2xl border border-border bg-[hsl(220_18%_5%)] p-5 font-mono text-xs text-cyan-300 shadow-xl space-y-3">
+                  <div className="flex items-center justify-between pb-3 border-b border-border/60 text-muted-foreground text-[11px]">
+                    <span className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse" />
+                      packet_trace.sh
+                    </span>
+                    <span>tcpdump / ss</span>
+                  </div>
+                  <p><span className="text-secondary">$</span> ss -tulnp | grep :443</p>
+                  <p className="text-green-400 text-[11px] pl-2">
+                    tcp LISTEN 0 128 0.0.0.0:443 0.0.0.0:* users:(("nginx",pid=1420))
+                  </p>
+                  <p><span className="text-secondary">$</span> dig +trace +nodnssec api.prod.cloud</p>
+                  <p className="text-muted-foreground text-[11px] pl-2">
+                    . IN NS a.root-servers.net.<br/>
+                    cloud. IN NS ns-1.awsdns.com.<br/>
+                    <span className="text-cyan-400">api.prod.cloud. 300 IN A 10.0.4.12</span>
+                  </p>
+                  <p><span className="text-secondary">$</span> ip route get 10.0.4.12</p>
+                  <p className="text-green-400 text-[11px] pl-2">
+                    10.0.4.12 via 10.0.0.1 dev eth0 src 10.0.1.50
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>

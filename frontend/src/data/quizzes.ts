@@ -331,6 +331,312 @@ export const QUIZZES: Quiz[] = [
       },
     ],
   },
+  {
+    id: "quiz_networking_001",
+    courseSlug: "networking-for-devops",
+    title: "Networking for DevOps & Cloud Assessment",
+    timeLimitMinutes: 20,
+    passingScore: 70,
+    questions: [
+      {
+        id: "nq1",
+        question: "In an AWS VPC subnet with CIDR block 10.0.1.0/28, how many usable IP addresses are available for EC2 instances or container ENIs?",
+        options: [
+          { id: "a", text: "16" },
+          { id: "b", text: "14" },
+          { id: "c", text: "11" },
+          { id: "d", text: "13" },
+        ],
+        correctAnswer: "c",
+        explanation: "A /28 block has 2^(32-28) = 16 total IP addresses. Standard IPv4 subtracts 2 (network and broadcast), but AWS VPC reserves 5 addresses (.0 network, .1 VPC router, .2 DNS, .3 future use, and .15 broadcast), leaving exactly 11 usable IPs.",
+      },
+      {
+        id: "nq2",
+        question: "Why does a Kubernetes pod by default make up to 5 iterative DNS queries when resolving an external address like api.stripe.com?",
+        options: [
+          { id: "a", text: "Due to ndots:5 configured in pod /etc/resolv.conf, querying local search domains first" },
+          { id: "b", text: "CoreDNS requires 5 quorum votes across replica pods before responding" },
+          { id: "c", text: "TCP requires 5 packet retries over UDP" },
+          { id: "d", text: "Because kube-proxy drops the first 4 UDP packets" },
+        ],
+        correctAnswer: "a",
+        explanation: "Kubernetes defaults pods to `ndots:5`. Any domain with fewer than 5 dots (e.g. `api.stripe.com` has 2 dots) will first append all cluster search domains (`namespace.svc.cluster.local`, `svc.cluster.local`, `cluster.local`, etc.) before querying root.",
+      },
+      {
+        id: "nq3",
+        question: "Which Linux command displays active TCP listening ports along with their associated Process Name and PID without resolving hostnames?",
+        options: [
+          { id: "a", text: "netstat -r" },
+          { id: "b", text: "ss -tulnp" },
+          { id: "c", text: "ip route show" },
+          { id: "d", text: "dig -x 127.0.0.1" },
+        ],
+        correctAnswer: "b",
+        explanation: "`ss -tulnp` stands for: -t (TCP), -u (UDP), -l (Listening), -n (Numeric, no DNS resolution), -p (Show process PID and program name).",
+      },
+      {
+        id: "nq4",
+        question: "What is the key functional difference between AWS Security Groups and Network ACLs (NACLs)?",
+        options: [
+          { id: "a", text: "Security Groups are stateless at subnet level; NACLs are stateful at instance level" },
+          { id: "b", text: "Security Groups are stateful at ENI/instance level; NACLs are stateless at subnet level" },
+          { id: "c", text: "Security Groups only support outbound rules; NACLs only support inbound rules" },
+          { id: "d", text: "There is no functional difference; they are interchangeable" },
+        ],
+        correctAnswer: "b",
+        explanation: "Security Groups are stateful (inbound traffic automatically allows return outbound traffic regardless of rules) and apply to instance/ENI interfaces. NACLs are stateless and apply at the subnet boundary, requiring explicit rules in both directions including ephemeral return ports.",
+      },
+      {
+        id: "nq5",
+        question: "What socket state indicates that a local endpoint has closed a TCP connection and is waiting for twice the Maximum Segment Lifetime (2MSL) to ensure delayed packets expire?",
+        options: [
+          { id: "a", text: "SYN_RECEIVED" },
+          { id: "b", text: "CLOSE_WAIT" },
+          { id: "c", text: "TIME_WAIT" },
+          { id: "d", text: "ESTABLISHED" },
+        ],
+        correctAnswer: "c",
+        explanation: "`TIME_WAIT` is maintained by the side that initiated active close to ensure the remote end received the final ACK and to prevent old duplicate packets from interfering with new connections.",
+      },
+      {
+        id: "nq6",
+        question: "How does next-generation Cilium CNI route Kubernetes Service traffic compared to legacy kube-proxy?",
+        options: [
+          { id: "a", text: "Using eBPF programs attached to kernel socket and tc hooks, bypassing iptables chains" },
+          { id: "b", text: "By spawning dedicated sidecar proxies in every pod" },
+          { id: "c", text: "By routing all traffic through the API server" },
+          { id: "d", text: "By modifying DNS records every 100 milliseconds" },
+        ],
+        correctAnswer: "a",
+        explanation: "Cilium uses eBPF (Extended Berkeley Packet Filter) to process packets directly in the Linux kernel at socket and TC layers with O(1) hash map lookups, bypassing thousands of sequential iptables rules.",
+      },
+      {
+        id: "nq7",
+        question: "Which tcpdump flag captures raw packet payloads in both ASCII and Hex format for debugging application protocols?",
+        options: [
+          { id: "a", text: "-X (or -XX)" },
+          { id: "b", text: "-v" },
+          { id: "c", text: "-q" },
+          { id: "d", text: "-n" },
+        ],
+        correctAnswer: "a",
+        explanation: "`-X` prints data of each packet in both hex and ASCII format (excluding link level header), and `-XX` includes the link level header.",
+      },
+    ],
+  },
+  {
+    id: "quiz_git_001",
+    courseSlug: "git-github-mastery",
+    title: "Git & GitHub Mastery Quiz",
+    timeLimitMinutes: 15,
+    passingScore: 70,
+    questions: [
+      {
+        id: "gq1",
+        question: "What is the primary difference between 'git merge' and 'git rebase'?",
+        options: [
+          { id: "a", text: "Merge is only used for remote branches; rebase is local" },
+          { id: "b", text: "Merge preserves history with a merge commit; rebase rewrites commits linearly onto the base branch" },
+          { id: "c", text: "Rebase creates a new commit; merge modifies existing commits" },
+          { id: "d", text: "Merge loses commit messages while rebase keeps them" },
+        ],
+        correctAnswer: "b",
+        explanation: "Merge creates a join commit preserving original branches, while rebase replays your commits one by one on top of the target branch for a clean, linear history.",
+      },
+      {
+        id: "gq2",
+        question: "Which command safely reverts an erroneous pushed commit by creating a new commit with the inverse changes?",
+        options: [
+          { id: "a", text: "git reset --hard HEAD~1" },
+          { id: "b", text: "git revert <commit-hash>" },
+          { id: "c", text: "git checkout --force" },
+          { id: "d", text: "git cherry-pick -n" },
+        ],
+        correctAnswer: "b",
+        explanation: "`git revert` creates a new commit that undoes the specified commit's changes without rewriting history, making it safe for shared branches.",
+      },
+      {
+        id: "gq3",
+        question: "What does 'git cherry-pick <commit-hash>' do?",
+        options: [
+          { id: "a", text: "Deletes a commit from history" },
+          { id: "b", text: "Applies the changes from an existing commit from another branch onto your current branch" },
+          { id: "c", text: "Finds bugs using binary search" },
+          { id: "d", text: "Squashes all branch commits into one" },
+        ],
+        correctAnswer: "b",
+        explanation: "`git cherry-pick` selects a specific commit from any branch and applies its patch onto the currently checked-out branch.",
+      },
+      {
+        id: "gq4",
+        question: "What is the purpose of Git hooks located in `.git/hooks`?",
+        options: [
+          { id: "a", text: "To store credentials securely" },
+          { id: "b", text: "To execute custom scripts before or after Git events like commit, push, and rebase" },
+          { id: "c", text: "To compress Git database objects" },
+          { id: "d", text: "To mirror repositories to backups" },
+        ],
+        correctAnswer: "b",
+        explanation: "Git hooks are client-side or server-side scripts triggered by events like pre-commit, commit-msg, or pre-push for linting, testing, and validation.",
+      }
+    ],
+  },
+  {
+    id: "quiz_cicd_001",
+    courseSlug: "jenkins-cicd-pipelines",
+    title: "Jenkins & CI/CD Pipelines Assessment",
+    timeLimitMinutes: 15,
+    passingScore: 70,
+    questions: [
+      {
+        id: "cq1",
+        question: "What is the key difference between Continuous Delivery and Continuous Deployment?",
+        options: [
+          { id: "a", text: "Continuous Delivery requires automated testing, Continuous Deployment does not" },
+          { id: "b", text: "Continuous Delivery stops before production for manual approval; Continuous Deployment deploys to production automatically" },
+          { id: "c", text: "Continuous Deployment is only for Docker containers" },
+          { id: "d", text: "Continuous Delivery is used exclusively with Jenkins" },
+        ],
+        correctAnswer: "b",
+        explanation: "Continuous Delivery automates build and test stages up to production-ready artifacts awaiting manual release; Continuous Deployment automatically releases passing changes directly to production without human intervention.",
+      },
+      {
+        id: "cq2",
+        question: "In a GitHub Actions workflow YAML file, how do you specify that a job depends on the successful completion of another job?",
+        options: [
+          { id: "a", text: "depends_on: [build]" },
+          { id: "b", text: "needs: build" },
+          { id: "c", text: "after: build" },
+          { id: "d", text: "require: build" },
+        ],
+        correctAnswer: "b",
+        explanation: "The `needs` keyword defines dependencies between jobs in GitHub Actions, ensuring dependent jobs run sequentially after the specified jobs succeed.",
+      },
+      {
+        id: "cq3",
+        question: "In Jenkins Declarative Pipelines, what block defines actions that run conditionally after all stages execute (e.g. always, success, failure)?",
+        options: [
+          { id: "a", text: "cleanup" },
+          { id: "b", text: "post" },
+          { id: "c", text: "finally" },
+          { id: "d", text: "after" },
+        ],
+        correctAnswer: "b",
+        explanation: "The `post` section in a Declarative Jenkinsfile defines steps that run based on the completion status of the pipeline (always, success, failure, aborted, unstable).",
+      }
+    ],
+  },
+  {
+    id: "quiz_terraform_001",
+    courseSlug: "terraform-infrastructure-as-code",
+    title: "Terraform & IaC Assessment",
+    timeLimitMinutes: 20,
+    passingScore: 70,
+    questions: [
+      {
+        id: "tq1",
+        question: "What is the primary function of the `terraform.tfstate` file?",
+        options: [
+          { id: "a", text: "To store Terraform plugin binaries" },
+          { id: "b", text: "To map your real-world cloud resources to your configuration and track metadata" },
+          { id: "c", text: "To store encrypted AWS credentials" },
+          { id: "d", text: "To generate architecture diagrams" },
+        ],
+        correctAnswer: "b",
+        explanation: "The state file records the mapping between declared configuration resources and real-world provisioned cloud infrastructure, tracking attributes and dependencies.",
+      },
+      {
+        id: "tq2",
+        question: "Why should you use an S3 backend with DynamoDB state locking in team environments?",
+        options: [
+          { id: "a", text: "To make Terraform CLI faster" },
+          { id: "b", text: "To prevent concurrent Terraform runs from corrupting the remote state file" },
+          { id: "c", text: "To automatically convert HCL to JSON" },
+          { id: "d", text: "It is required to run terraform apply" },
+        ],
+        correctAnswer: "b",
+        explanation: "DynamoDB table locking prevents multiple engineers or CI pipelines from modifying the same Terraform state concurrently, avoiding state file corruption and race conditions.",
+      },
+      {
+        id: "tq3",
+        question: "What command creates an execution plan and lets you preview changes before applying them?",
+        options: [
+          { id: "a", text: "terraform init" },
+          { id: "b", text: "terraform plan" },
+          { id: "c", text: "terraform validate" },
+          { id: "d", text: "terraform refresh" },
+        ],
+        correctAnswer: "b",
+        explanation: "`terraform plan` compares the current state with your code and cloud provider APIs, printing a detailed diff (+ create, ~ modify, - destroy).",
+      }
+    ],
+  },
+  {
+    id: "quiz_ansible_001",
+    courseSlug: "ansible-automation",
+    title: "Ansible Configuration Management Quiz",
+    timeLimitMinutes: 15,
+    passingScore: 70,
+    questions: [
+      {
+        id: "aq1",
+        question: "What makes Ansible 'agentless' compared to tools like Chef or Puppet?",
+        options: [
+          { id: "a", text: "Ansible does not support configuration management" },
+          { id: "b", text: "Ansible communicates over standard SSH / WinRM without requiring a background daemon installed on managed nodes" },
+          { id: "c", text: "Ansible only runs in Docker containers" },
+          { id: "d", text: "Ansible requires cloud vendor APIs exclusively" },
+        ],
+        correctAnswer: "b",
+        explanation: "Ansible executes Python modules over SSH (or WinRM for Windows) and cleans up afterwards, eliminating the need to install or maintain agent software on target servers.",
+      },
+      {
+        id: "aq2",
+        question: "What does the concept of 'idempotency' mean in Ansible modules?",
+        options: [
+          { id: "a", text: "Running a playbook multiple times produces the exact same desired end state without unintended side effects" },
+          { id: "b", text: "Playbooks execute in parallel across all hosts" },
+          { id: "c", text: "Ansible automatically reboots servers when finished" },
+          { id: "d", text: "Variables are encrypted with Ansible Vault" },
+        ],
+        correctAnswer: "a",
+        explanation: "An idempotent operation only makes changes if the target state does not match the desired state. If already configured, running it again changes nothing (status: ok).",
+      }
+    ],
+  },
+  {
+    id: "quiz_aws_001",
+    courseSlug: "aws-devops-engineer",
+    title: "AWS DevOps Engineer Assessment",
+    timeLimitMinutes: 20,
+    passingScore: 75,
+    questions: [
+      {
+        id: "aw1",
+        question: "Which AWS service is a fully managed container orchestration service compatible with Kubernetes?",
+        options: [
+          { id: "a", text: "AWS ECS" },
+          { id: "b", text: "AWS EKS" },
+          { id: "c", text: "AWS Fargate" },
+          { id: "d", text: "AWS App Runner" },
+        ],
+        correctAnswer: "b",
+        explanation: "Amazon Elastic Kubernetes Service (EKS) is a certified Kubernetes conformant managed service for running K8s on AWS.",
+      },
+      {
+        id: "aw2",
+        question: "What is the purpose of an AWS IAM Instance Profile attached to an EC2 instance?",
+        options: [
+          { id: "a", text: "To configure instance CPU and RAM allocation" },
+          { id: "b", text: "To securely pass temporary IAM role credentials to applications running on the instance without hardcoding keys" },
+          { id: "c", text: "To set firewall rules" },
+          { id: "d", text: "To speed up instance boot time" },
+        ],
+        correctAnswer: "b",
+        explanation: "An IAM Instance Profile allows EC2 instances to assume an IAM Role and receive automatically rotated temporary credentials via the instance metadata service (IMDS).",
+      }
+    ],
+  }
 ];
 
 export const getQuizByCourseSlug = (slug: string) =>

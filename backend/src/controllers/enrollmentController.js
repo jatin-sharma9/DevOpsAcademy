@@ -80,11 +80,11 @@ export const markLessonComplete = async (req, res) => {
       return res.status(400).json({ message: 'Course ID and Lesson ID are required' });
     }
 
-    // Check if enrolled
+    // Check if enrolled, auto-enroll if not
     const enrollments = await Enrollment.findByUserId(req.user.id);
     const isEnrolled = enrollments.some(e => e.course_id === parseInt(courseId, 10));
     if (!isEnrolled) {
-      return res.status(403).json({ message: 'You must be enrolled in this course to mark lessons complete' });
+      await Enrollment.enroll(req.user.id, courseId);
     }
 
     // Mark complete
@@ -139,11 +139,11 @@ export const markLessonIncomplete = async (req, res) => {
       return res.status(400).json({ message: 'Course ID and Lesson ID are required' });
     }
 
-    // Check if enrolled
+    // Check if enrolled, auto-enroll if not
     const enrollments = await Enrollment.findByUserId(req.user.id);
     const isEnrolled = enrollments.some(e => e.course_id === parseInt(courseId, 10));
     if (!isEnrolled) {
-      return res.status(403).json({ message: 'You must be enrolled in this course' });
+      await Enrollment.enroll(req.user.id, courseId);
     }
 
     // Mark incomplete

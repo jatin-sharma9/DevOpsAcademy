@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Terminal, LayoutDashboard, BookOpen, Users, FileText, LogOut, Menu, ChevronLeft, Bell, Mail,
-  PlusCircle, FolderTree, GraduationCap, Award, MessageSquare, Settings
+  PlusCircle, FolderTree, GraduationCap, Award, MessageSquare, Settings, Layers
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiService } from "@/services/apiService";
@@ -12,6 +12,7 @@ const ADMIN_NAV = [
   { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
   { label: "Users", href: "/admin/users", icon: Users },
   { label: "Courses", href: "/admin/courses", icon: BookOpen },
+  { label: "Lessons", href: "/admin/lessons", icon: Layers },
   { label: "Add Course", href: "/admin/courses/add", icon: PlusCircle },
   { label: "Categories", href: "/admin/categories", icon: FolderTree },
   { label: "Enrollments", href: "/admin/enrollments", icon: GraduationCap },

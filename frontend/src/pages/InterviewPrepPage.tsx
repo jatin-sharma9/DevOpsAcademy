@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const CATEGORIES = ["All", "Kubernetes", "Docker", "Terraform", "Linux & Systems", "Scenario-Based"];
+const CATEGORIES = ["All", "Kubernetes", "Networking", "Docker", "Terraform", "Linux & Systems", "Scenario-Based"];
 
 const QUESTIONS = [
   {
@@ -48,6 +48,22 @@ const QUESTIONS = [
     difficulty: "Intermediate",
     answer: "1. Run `uptime` or `top` to check 1, 5, 15 min load averages against core count.\n2. **CPU**: Check `%us` and `%sy` in `top`/`htop`. High CPU utilization points to heavy computation.\n3. **I/O Wait**: Check `%wa` in `top` or run `iostat -xz 1`. High `%wa` means disk bottleneck.\n4. **Memory/Swap**: Run `free -m` and check `vmstat 1` for `si`/`so` (swap in/out) activity.",
     command: "top -b -n 1 | head -n 20"
+  },
+  {
+    id: "q6",
+    category: "Networking",
+    question: "How does Kubernetes CoreDNS resolve domains, and why does 'ndots:5' cause massive DNS lookup amplification?",
+    difficulty: "Advanced",
+    answer: "1. When a pod makes a DNS request, glibc checks `/etc/resolv.conf`. By default, K8s injects `options ndots:5` and cluster search domains (e.g. `default.svc.cluster.local`, `svc.cluster.local`, `cluster.local`).\n2. If a query domain has fewer than 5 dots (e.g. `api.stripe.com` has 2), glibc assumes it might be a local service and iterates through all search domains first, causing 4 NXDOMAIN errors before querying the public domain.\n3. **Remediation**: Append a trailing dot (`api.stripe.com.`), set `ndots:2` in pod `dnsConfig`, or deploy NodeLocal DNSCache.",
+    command: "kubectl exec -it <pod> -- cat /etc/resolv.conf"
+  },
+  {
+    id: "q7",
+    category: "Networking",
+    question: "How do AWS Security Groups and Network ACLs (NACLs) differ in architecture, statefulness, and rule evaluation?",
+    difficulty: "Intermediate",
+    answer: "• **Security Groups**: Stateful and attached to virtual interfaces (ENIs/EC2). Inbound allowed traffic automatically permits return outbound traffic regardless of outbound rules. All rules are evaluated together.\n• **Network ACLs**: Stateless and attached to Subnet boundaries. Inbound rules require explicit outbound rules for return ephemeral traffic (ports 1024-65535). Rules are evaluated in strict numerical order (lowest number first).\n• **Defense-in-Depth**: Use NACLs as a coarse subnet firewall (e.g. block malicious IP subnets) and Security Groups for fine-grained application security.",
+    command: "aws ec2 describe-security-groups --group-ids <sg-id>"
   }
 ];
 

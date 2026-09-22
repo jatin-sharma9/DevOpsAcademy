@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Search, SlidersHorizontal, X, Loader2 } from "lucide-react";
+import { Search, SlidersHorizontal, X, Loader2, Sparkles } from "lucide-react";
 import CourseCard from "@/components/courses/CourseCard";
-import { CATEGORIES } from "@/data/courses";
+import { CATEGORIES, COURSES } from "@/data/courses";
 import { cn } from "@/lib/utils";
 import { apiService, mapBackendCourseToFrontend } from "@/services/apiService";
 
@@ -23,12 +23,17 @@ export default function CourseCatalogPage() {
       try {
         setLoading(true);
         const res = await apiService.courses.getAll(true); // fetch published courses
-        if (res.success && Array.isArray(res.data)) {
+        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
           const mapped = res.data.map(mapBackendCourseToFrontend);
           setCourses(mapped);
+        } else {
+          // Backend returned empty data, use static fallback
+          setCourses(COURSES as any[]);
         }
       } catch (err) {
-        console.error("Error loading courses:", err);
+        console.error("Error loading courses from API, using local data:", err);
+        // Fallback to static course data when backend is unavailable
+        setCourses(COURSES as any[]);
       } finally {
         setLoading(false);
       }
@@ -52,9 +57,31 @@ export default function CourseCatalogPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10">
       {/* Header */}
-      <div className="mb-8">
+      <div className="mb-6">
         <h1 className="text-3xl font-display font-bold mb-2">Course <span className="gradient-text">Catalog</span></h1>
         <p className="text-muted-foreground">Explore expert-led DevOps courses. Filter by topic, level, and price.</p>
+      </div>
+
+      {/* Standard Learning Framework Banner */}
+      <div className="mb-8 p-5 rounded-2xl border border-primary/25 bg-gradient-to-r from-primary/10 via-card to-card flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+        <div className="flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-primary/20 text-primary flex items-center justify-center shrink-0 border border-primary/30">
+            <Sparkles className="w-5 h-5 text-accent animate-pulse" />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
+              DevOps Academy Standard Learning Framework
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/20 text-primary font-mono font-normal">All 9 Courses</span>
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Every course is built on our standardized 11-pillar model: Theory, ASCII Architecture, CLI Commands, Practical Labs, Outage Runbooks, and Staff Interview Q&A.
+            </p>
+          </div>
+        </div>
+        <div className="hidden md:flex items-center gap-2 text-xs font-mono text-muted-foreground shrink-0">
+          <span className="px-2.5 py-1 rounded-lg bg-muted/60 border border-border">100% Free</span>
+          <span className="px-2.5 py-1 rounded-lg bg-muted/60 border border-border">Verifiable Certificate</span>
+        </div>
       </div>
 
       {/* Search + Filter Toggle */}

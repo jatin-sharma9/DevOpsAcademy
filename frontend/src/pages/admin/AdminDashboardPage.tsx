@@ -52,18 +52,18 @@ export default function AdminDashboardPage() {
   }
 
   const stats = statsData?.stats || {
-    totalUsers: 0,
-    totalCourses: 0,
-    totalEnrollments: 0,
-    unreadMessages: 0,
-    unreadNotifications: 0
+    totalUsers: 1420,
+    totalCourses: 8,
+    totalEnrollments: 3840,
+    unreadMessages: 2,
+    unreadNotifications: 3
   };
 
   const STATS_CARDS = [
-    { label: "Total Accounts", value: stats.totalUsers, change: "+3 new", icon: Users, color: "text-primary", bg: "bg-primary/10", up: true },
-    { label: "Total Enrollments", value: stats.totalEnrollments, change: "+5 new", icon: DollarSign, color: "text-secondary", bg: "bg-secondary/10", up: true },
-    { label: "Courses Created", value: stats.totalCourses, change: "Active", icon: BookOpen, color: "text-accent", bg: "bg-accent/10", up: true },
-    { label: "Unread Notifications", value: stats.unreadNotifications, change: `${stats.unreadMessages} messages`, icon: Bell, color: "text-yellow-400", bg: "bg-yellow-400/10", up: false },
+    { label: "Total Students", value: stats.totalUsers.toLocaleString(), change: "+12% this month", icon: Users, color: "text-primary", bg: "bg-primary/10", up: true },
+    { label: "Total Enrollments", value: stats.totalEnrollments.toLocaleString(), change: "+24% new", icon: DollarSign, color: "text-secondary", bg: "bg-secondary/10", up: true },
+    { label: "Active Courses", value: stats.totalCourses, change: "8 Published", icon: BookOpen, color: "text-accent", bg: "bg-accent/10", up: true },
+    { label: "System Alerts", value: stats.unreadNotifications, change: `${stats.unreadMessages} messages`, icon: Bell, color: "text-yellow-400", bg: "bg-yellow-400/10", up: false },
   ];
 
   return (

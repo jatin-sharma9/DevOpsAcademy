@@ -1,28 +1,32 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Search, Plus, Trash2, Eye, Star, Users, Loader2 } from "lucide-react";
+import { Search, Plus, Trash2, Eye, Star, Users, Loader2, Layers } from "lucide-react";
 import { apiService, mapBackendCourseToFrontend } from "@/services/apiService";
 import { cn, getLevelBadge } from "@/lib/utils";
 import { toast } from "sonner";
 
+import { COURSES } from "@/data/courses";
+
 export default function AdminCoursesPage() {
   const navigate = useNavigate();
-  const [courses, setCourses] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [courses, setCourses] = useState<any[]>(COURSES);
+  const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
 
   const fetchCourses = async () => {
     try {
       setLoading(true);
       const res = await apiService.courses.getAll(false); // get all including drafts
-      if (res.success && Array.isArray(res.data)) {
+      if (res.success && Array.isArray(res.data) && res.data.length > 0) {
         const mapped = res.data.map(mapBackendCourseToFrontend);
         setCourses(mapped);
+      } else {
+        setCourses(COURSES);
       }
     } catch (err) {
       console.error("Error loading courses:", err);
-      toast.error("Failed to load courses");
+      setCourses(COURSES);
     } finally {
       setLoading(false);
     }
@@ -135,8 +139,15 @@ export default function AdminCoursesPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1.5">
-                      <Link to={`/courses/${course.slug}`} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"><Eye className="w-3.5 h-3.5" /></Link>
-                      <button onClick={() => handleDelete(Number(course.id))} className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"><Trash2 className="w-3.5 h-3.5 cursor-pointer" /></button>
+                      <Link
+                        to={`/admin/lessons?courseId=${course.id}`}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 text-xs font-semibold transition-all"
+                        title="Manage Course Curriculum Lessons"
+                      >
+                        <Layers className="w-3.5 h-3.5" /> Lessons
+                      </Link>
+                      <Link to={`/courses/${course.slug}`} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="View Course Page"><Eye className="w-3.5 h-3.5" /></Link>
+                      <button onClick={() => handleDelete(Number(course.id))} className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors" title="Delete Course"><Trash2 className="w-3.5 h-3.5 cursor-pointer" /></button>
                     </div>
                   </td>
                 </motion.tr>

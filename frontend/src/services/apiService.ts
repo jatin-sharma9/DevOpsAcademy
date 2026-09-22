@@ -2,6 +2,7 @@ import axios from 'axios';
 import React from 'react';
 import { SiLinux, SiGit, SiDocker, SiKubernetes, SiJenkins, SiTerraform, SiAnsible } from 'react-icons/si';
 import { Cloud, HelpCircle } from 'lucide-react';
+import { COURSES } from '@/data/courses';
 
 const API_BASE_URL = 'http://localhost:5000/api';
 
@@ -203,6 +204,43 @@ export const apiService = {
     },
   },
 
+  // --- BLOGS ---
+  blogs: {
+    async getAll(publishedOnly = false, category?: string, search?: string) {
+      const params = new URLSearchParams();
+      if (publishedOnly) params.append('published', 'true');
+      if (category && category !== 'All') params.append('category', category);
+      if (search) params.append('search', search);
+      const url = `/blogs${params.toString() ? `?${params.toString()}` : ''}`;
+      const res = await api.get(url);
+      return res.data;
+    },
+    async getBySlug(slug: string) {
+      const res = await api.get(`/blogs/${slug}`);
+      return res.data;
+    },
+    async create(data: any) {
+      const res = await api.post('/blogs', data);
+      return res.data;
+    },
+    async update(id: number | string, data: any) {
+      const res = await api.put(`/blogs/${id}`, data);
+      return res.data;
+    },
+    async delete(id: number | string) {
+      const res = await api.delete(`/blogs/${id}`);
+      return res.data;
+    },
+    async togglePublish(id: number | string, isPublished: boolean) {
+      const res = await api.put(`/blogs/${id}/publish`, { isPublished });
+      return res.data;
+    },
+    async toggleFeatured(id: number | string, isFeatured: boolean) {
+      const res = await api.put(`/blogs/${id}/featured`, { isFeatured });
+      return res.data;
+    },
+  },
+
   // --- ADMIN PORTAL ---
   admin: {
     async getStats() {
@@ -263,6 +301,51 @@ export const apiService = {
       return res.data;
     },
   },
+
+  // --- DAILY LEARNING TRACKER ---
+  tracker: {
+    /**
+     * Load goals + stats for a specific date (defaults to today).
+     * Returns { success, data: { goals, stats, date } }
+     */
+    async getTrackerData(date?: string) {
+      const url = date ? `/tracker?date=${date}` : '/tracker';
+      const res = await api.get(url);
+      return res.data;
+    },
+
+    /**
+     * Create a new learning goal in PostgreSQL.
+     */
+    async addGoal(data: { title: string; category: string; targetDate?: string }) {
+      const res = await api.post('/tracker/goals', data);
+      return res.data;
+    },
+
+    /**
+     * Toggle a goal's completion status. Returns updated goal + fresh stats.
+     */
+    async toggleGoal(id: number) {
+      const res = await api.patch(`/tracker/goals/${id}`);
+      return res.data;
+    },
+
+    /**
+     * Permanently delete a goal.
+     */
+    async deleteGoal(id: number) {
+      const res = await api.delete(`/tracker/goals/${id}`);
+      return res.data;
+    },
+
+    /**
+     * Log learning minutes. Triggers streak recalculation.
+     */
+    async logTime(minutes: number) {
+      const res = await api.post('/tracker/activity', { minutes });
+      return res.data;
+    },
+  },
 };
 
 const getCategoryIcon = (category: string) => {
@@ -293,38 +376,17 @@ const getCategoryColor = (category: string) => {
 
 export const mapBackendCourseToFrontend = (course: any): any => {
   if (!course) return null;
-  return {
-    id: String(course.id),
-    slug: course.slug,
-    title: course.title,
-    shortDescription: course.short_description || '',
-    description: course.description || '',
-    category: course.category || '',
-    level: course.level || 'beginner',
-    price: Number(course.price || 0),
-    isPro: !!course.is_pro,
-    isFeatured: !!course.is_featured,
-    isPublished: !!course.is_published,
-    rating: 4.8,
-    totalRatings: 120,
-    totalStudents: 1420,
-    totalLessons: course.lessons ? course.lessons.length : 0,
-    durationHours: Number(course.duration_hours || 0),
-    instructor: "Jatin Sharma",
-    instructorTitle: "Senior DevOps Engineer",
-    thumbnail: course.thumbnail || '',
-    icon: getCategoryIcon(course.category),
-    color: getCategoryColor(course.category),
-    tags: [course.category || 'DevOps'].filter(Boolean),
-    whatYouLearn: [
-      "Master the core fundamentals of this technology",
-      "Implement production-ready solutions and architectures",
-      "Configure automated pipelines and workflows",
-      "Follow industry-standard best practices"
-    ],
-    requirements: ["Basic computer knowledge", "Access to a terminal and internet"],
-    updatedAt: course.updated_at ? course.updated_at.split('T')[0] : '2026-08-25',
-    sections: course.lessons ? [
+  const staticCourse = COURSES.find(
+    c => c.slug === course.slug || c.id === String(course.id) || c.id === course.slug
+  );
+
+  let sections = staticCourse?.sections || [];
+  if (
+    course.lessons &&
+    course.lessons.length > 0 &&
+    (!staticCourse?.sections || staticCourse.sections.length === 0)
+  ) {
+    sections = [
       {
         id: `sec_${course.id}_1`,
         title: "Syllabus Chapters",
@@ -338,6 +400,40 @@ export const mapBackendCourseToFrontend = (course: any): any => {
           content: lesson.content || ''
         }))
       }
-    ] : []
+    ];
+  }
+
+  return {
+    id: String(course.id),
+    slug: course.slug,
+    title: course.title || staticCourse?.title || '',
+    shortDescription: course.short_description || staticCourse?.shortDescription || '',
+    description: course.description || staticCourse?.description || '',
+    category: course.category || staticCourse?.category || '',
+    level: course.level || staticCourse?.level || 'beginner',
+    price: Number(course.price !== undefined ? course.price : (staticCourse?.price || 0)),
+    isPro: course.is_pro !== undefined ? !!course.is_pro : (staticCourse?.isPro || false),
+    isFeatured: course.is_featured !== undefined ? !!course.is_featured : (staticCourse?.isFeatured || false),
+    isPublished: course.is_published !== undefined ? !!course.is_published : true,
+    rating: staticCourse?.rating || 4.9,
+    totalRatings: staticCourse?.totalRatings || 1420,
+    totalStudents: staticCourse?.totalStudents || 8900,
+    totalLessons: (sections.reduce((acc: number, s: any) => acc + (s.lessons?.length || 0), 0)) || staticCourse?.totalLessons || (course.lessons ? course.lessons.length : 0),
+    durationHours: Number(course.duration_hours || staticCourse?.durationHours || 16),
+    instructor: staticCourse?.instructor || "Jatin Sharma",
+    instructorTitle: staticCourse?.instructorTitle || "Senior DevOps Engineer",
+    thumbnail: course.thumbnail || staticCourse?.thumbnail || '',
+    icon: staticCourse?.icon || getCategoryIcon(course.category),
+    color: staticCourse?.color || getCategoryColor(course.category),
+    tags: staticCourse?.tags || [course.category || 'DevOps'].filter(Boolean),
+    whatYouLearn: staticCourse?.whatYouLearn || [
+      "Master the core fundamentals of this technology",
+      "Implement production-ready solutions and architectures",
+      "Configure automated pipelines and workflows",
+      "Follow industry-standard best practices"
+    ],
+    requirements: staticCourse?.requirements || ["Basic computer knowledge", "Access to a terminal and internet"],
+    updatedAt: course.updated_at ? course.updated_at.split('T')[0] : (staticCourse?.updatedAt || '2026-09-22'),
+    sections
   };
 };

@@ -4,15 +4,39 @@ import { Search, BookOpen, FileText } from "lucide-react";
 import { COURSES } from "@/data/courses";
 import { BLOG_POSTS } from "@/data/blog";
 import CourseCard from "@/components/courses/CourseCard";
+import { apiService, mapBackendCourseToFrontend } from "@/services/apiService";
+import { Loader2 } from "lucide-react";
 
 export default function SearchPage() {
   const [searchParams] = useSearchParams();
   const query = searchParams.get("q") || "";
   const [tab, setTab] = useState<"courses" | "blog">("courses");
+  const [courses, setCourses] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const matchedCourses = COURSES.filter(c =>
+  React.useEffect(() => {
+    const fetchCourses = async () => {
+      try {
+        setLoading(true);
+        const res = await apiService.courses.getAll(true);
+        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+          setCourses(res.data.map(mapBackendCourseToFrontend));
+        } else {
+          setCourses(COURSES);
+        }
+      } catch (err) {
+        console.error("Error loading search courses, falling back to static:", err);
+        setCourses(COURSES);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchCourses();
+  }, []);
+
+  const matchedCourses = courses.filter(c =>
     c.title.toLowerCase().includes(query.toLowerCase()) ||
-    c.tags.some(t => t.toLowerCase().includes(query.toLowerCase())) ||
+    c.tags.some((t: string) => t.toLowerCase().includes(query.toLowerCase())) ||
     c.category.toLowerCase().includes(query.toLowerCase())
   );
 
@@ -30,12 +54,12 @@ export default function SearchPage() {
           <Search className="w-4 h-4" />
           <span>Search results for <span className="font-semibold text-foreground">"{query}"</span></span>
         </div>
-        <h1 className="text-2xl font-display font-bold">{total} results found</h1>
+        <h1 className="text-2xl font-display font-bold">{loading ? "Searching..." : `${total} results found`}</h1>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 p-1 bg-muted rounded-xl w-fit mb-8">
-        {([["courses", BookOpen, matchedCourses.length], ["blog", FileText, matchedPosts.length]] as const).map(([id, Icon, count]) => (
+        {([["courses", BookOpen, loading ? 0 : matchedCourses.length], ["blog", FileText, matchedPosts.length]] as const).map(([id, Icon, count]) => (
           <button key={id} onClick={() => setTab(id)}
             className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-all capitalize ${tab === id ? "bg-card shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
             <Icon className="w-3.5 h-3.5" />{id} ({count})
@@ -43,7 +67,12 @@ export default function SearchPage() {
         ))}
       </div>
 
-      {tab === "courses" ? (
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-20">
+          <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
+          <p className="text-muted-foreground text-sm">Searching courses...</p>
+        </div>
+      ) : tab === "courses" ? (
         matchedCourses.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
             {matchedCourses.map((course, i) => <CourseCard key={course.id} course={course} index={i} />)}

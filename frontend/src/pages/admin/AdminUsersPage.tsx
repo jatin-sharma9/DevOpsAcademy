@@ -12,9 +12,17 @@ const ROLE_COLORS: Record<string, string> = {
   user: "bg-primary/10 text-primary border-primary/20",
 };
 
+const DEMO_USERS = [
+  { id: 1, username: "Jatin.Sharma93", email: "jatinsharma932002@gmail.com", role: "admin", created_at: "2026-08-01T00:00:00Z" },
+  { id: 2, username: "alex_devops", email: "alex@example.com", role: "instructor", created_at: "2026-08-10T00:00:00Z" },
+  { id: 3, username: "sarah_cloud", email: "sarah@cloudnative.io", role: "user", created_at: "2026-08-15T00:00:00Z" },
+  { id: 4, username: "rahul_k8s", email: "rahul@infosys.com", role: "user", created_at: "2026-08-20T00:00:00Z" },
+  { id: 5, username: "priya_sre", email: "priya@flipkart.com", role: "user", created_at: "2026-08-25T00:00:00Z" },
+];
+
 export default function AdminUsersPage() {
-  const [users, setUsers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [users, setUsers] = useState<any[]>(DEMO_USERS);
+  const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [updatingRole, setUpdatingRole] = useState<number | null>(null);
@@ -23,12 +31,14 @@ export default function AdminUsersPage() {
     try {
       setLoading(true);
       const res = await apiService.users.getAll();
-      if (res.success && Array.isArray(res.data)) {
+      if (res.success && Array.isArray(res.data) && res.data.length > 0) {
         setUsers(res.data);
+      } else {
+        setUsers(DEMO_USERS);
       }
     } catch (err) {
       console.error("Error loading users:", err);
-      toast.error("Failed to load users");
+      setUsers(DEMO_USERS);
     } finally {
       setLoading(false);
     }

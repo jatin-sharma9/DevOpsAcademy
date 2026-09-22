@@ -9,6 +9,8 @@ import courseRoutes from './src/routes/courseRoutes.js';
 import enrollmentRoutes from './src/routes/enrollmentRoutes.js';
 import contactRoutes from './src/routes/contactRoutes.js';
 import adminRoutes from './src/routes/adminRoutes.js';
+import trackerRoutes from './src/routes/trackerRoutes.js';
+import blogRoutes from './src/routes/blogRoutes.js';
 
 const app = express();
 
@@ -44,6 +46,8 @@ app.use('/api/courses', courseRoutes);
 app.use('/api/enrollments', enrollmentRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/tracker', trackerRoutes);
+app.use('/api/blogs', blogRoutes);
 
 // 404 Handler
 app.use((req, res) => {

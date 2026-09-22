@@ -1,20 +1,55 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Search, Clock, Eye, ArrowRight, Tag } from "lucide-react";
-import { BLOG_POSTS } from "@/data/blog";
+import { Search, Clock, Eye, ArrowRight, Tag, Loader2 } from "lucide-react";
+import { BLOG_POSTS, BlogPost } from "@/data/blog";
+import { apiService } from "@/services/apiService";
 import { formatDate, truncate } from "@/lib/utils";
 
-const CATEGORIES = ["All", "Kubernetes", "Terraform", "CI/CD", "Linux", "Docker", "AWS", "Ansible"];
+const CATEGORIES = ["All", "Kubernetes", "Terraform", "CI/CD", "Linux", "Docker", "AWS", "Ansible", "DevOps"];
 
 export default function BlogPage() {
+  const [posts, setPosts] = useState<any[]>(BLOG_POSTS);
+  const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
 
-  const featured = BLOG_POSTS.filter(p => p.featured);
-  const filtered = BLOG_POSTS.filter(p => {
-    const matchSearch = !search || p.title.toLowerCase().includes(search.toLowerCase()) || p.tags.some(t => t.toLowerCase().includes(search.toLowerCase()));
-    const matchCat = category === "All" || p.category === category;
+  useEffect(() => {
+    const loadBlogs = async () => {
+      try {
+        setLoading(true);
+        const res = await apiService.blogs.getAll(true);
+        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+          const mapped = res.data.map((b: any) => ({
+            id: b.id,
+            slug: b.slug,
+            title: b.title,
+            excerpt: b.excerpt || '',
+            content: b.content || '',
+            category: b.category || 'DevOps',
+            tags: Array.isArray(b.tags) ? b.tags : typeof b.tags === 'string' ? b.tags.split(',') : [],
+            author: b.author_name || 'Jatin Sharma',
+            authorTitle: b.author_title || 'Senior DevOps Engineer',
+            publishedAt: b.created_at || new Date().toISOString(),
+            readTimeMinutes: b.read_time_minutes || 5,
+            viewCount: b.view_count || 0,
+            featured: !!b.is_featured,
+          }));
+          setPosts(mapped);
+        }
+      } catch {
+        // Fallback to static posts
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadBlogs();
+  }, []);
+
+  const featured = posts.filter(p => p.featured);
+  const filtered = posts.filter(p => {
+    const matchSearch = !search || p.title.toLowerCase().includes(search.toLowerCase()) || (Array.isArray(p.tags) && p.tags.some((t: string) => t.toLowerCase().includes(search.toLowerCase())));
+    const matchCat = category === "All" || p.category.toLowerCase() === category.toLowerCase();
     return matchSearch && matchCat;
   });
 
@@ -80,7 +115,7 @@ export default function BlogPage() {
                 <h3 className="font-display font-bold text-sm leading-snug mb-2 group-hover:text-primary transition-colors flex-1">{post.title}</h3>
                 <p className="text-xs text-muted-foreground leading-relaxed mb-4">{truncate(post.excerpt, 120)}</p>
                 <div className="flex flex-wrap gap-1.5 mb-4">
-                  {post.tags.slice(0, 3).map(tag => (
+                  {Array.isArray(post.tags) && post.tags.slice(0, 3).map((tag: string) => (
                     <span key={tag} className="px-2 py-0.5 text-[10px] font-mono rounded bg-muted text-muted-foreground"><Tag className="w-2.5 h-2.5 inline mr-0.5" />{tag}</span>
                   ))}
                 </div>

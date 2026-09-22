@@ -24,6 +24,7 @@ import ProfilePage from "@/pages/ProfilePage";
 import PortfolioPage from "@/pages/PortfolioPage";
 import InterviewPrepPage from "@/pages/InterviewPrepPage";
 import LearningTrackerPage from "@/pages/LearningTrackerPage";
+import NetworkingPage from "@/pages/NetworkingPage";
 import NotFoundPage from "@/pages/NotFoundPage";
 
 // Admin Pages
@@ -34,6 +35,7 @@ import AdminCategoriesPage from "@/pages/admin/AdminCategoriesPage";
 import AdminEnrollmentsPage from "@/pages/admin/AdminEnrollmentsPage";
 import AdminCertificatesPage from "@/pages/admin/AdminCertificatesPage";
 import AdminUsersPage from "@/pages/admin/AdminUsersPage";
+import AdminLessonsPage from "@/pages/admin/AdminLessonsPage";
 import AdminBlogPage from "@/pages/admin/AdminBlogPage";
 import AdminMessagesPage from "@/pages/admin/AdminMessagesPage";
 import AdminAnalyticsPage from "@/pages/admin/AdminAnalyticsPage";
@@ -62,6 +64,7 @@ function AppRoutes() {
       <Route element={<MainLayout />}>
         <Route path="/" element={<LandingPage />} />
         <Route path="/portfolio" element={<PortfolioPage />} />
+        <Route path="/networking" element={<Navigate to="/courses/networking-for-devops" replace />} />
         <Route path="/interview-prep" element={<InterviewPrepPage />} />
         <Route path="/tracker" element={<LearningTrackerPage />} />
         <Route path="/courses" element={<CourseCatalogPage />} />
@@ -89,6 +92,7 @@ function AppRoutes() {
         <Route index element={<AdminDashboardPage />} />
         <Route path="courses" element={<AdminCoursesPage />} />
         <Route path="courses/add" element={<AdminAddCoursePage />} />
+        <Route path="lessons" element={<AdminLessonsPage />} />
         <Route path="categories" element={<AdminCategoriesPage />} />
         <Route path="enrollments" element={<AdminEnrollmentsPage />} />
         <Route path="certificates" element={<AdminCertificatesPage />} />

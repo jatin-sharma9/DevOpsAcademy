@@ -5,6 +5,7 @@ import { Terminal, Github, Linkedin, Twitter, Youtube, Mail } from "lucide-react
 const FOOTER_LINKS = {
   "Learning": [
     { label: "All Courses", href: "/courses" },
+    { label: "Networking for DevOps", href: "/courses/networking-for-devops" },
     { label: "Learning Paths", href: "/courses?tab=paths" },
     { label: "Free Courses", href: "/courses?filter=free" },
     { label: "Certifications", href: "/courses?tab=certs" },
@@ -23,7 +24,7 @@ const FOOTER_LINKS = {
   ],
 };
 
-const TOOLS = ["Linux", "Git", "Docker", "Kubernetes", "Jenkins", "Terraform", "Ansible", "AWS"];
+const TOOLS = ["Linux", "Git", "Docker", "Kubernetes", "Jenkins", "Terraform", "Ansible", "AWS", "Networking"];
 
 export default function Footer() {
   return (

@@ -128,6 +128,75 @@ export const migrate = async () => {
       );
     `);
 
+    // Learning Goals table (Daily Learning Tracker goals/tasks per user per day)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS learning_goals (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        title VARCHAR(255) NOT NULL,
+        category VARCHAR(100) NOT NULL DEFAULT 'General',
+        completed BOOLEAN DEFAULT FALSE,
+        target_date DATE DEFAULT CURRENT_DATE,
+        completed_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_learning_goals_user_date
+        ON learning_goals (user_id, target_date);
+    `);
+
+    // User Streaks table (one row per user, tracks consecutive active days)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_streaks (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+        current_streak INTEGER DEFAULT 0,
+        longest_streak INTEGER DEFAULT 0,
+        last_activity_date DATE,
+        total_days_active INTEGER DEFAULT 0,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Daily Learning Activity table (minutes logged + goals completed per user per day)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS daily_learning_activity (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        activity_date DATE DEFAULT CURRENT_DATE,
+        minutes_spent INTEGER DEFAULT 0,
+        goals_completed INTEGER DEFAULT 0,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, activity_date)
+      );
+    `);
+
+    // Blogs table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS blogs (
+        id SERIAL PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        slug VARCHAR(255) UNIQUE NOT NULL,
+        excerpt TEXT,
+        content TEXT NOT NULL,
+        category VARCHAR(100) NOT NULL DEFAULT 'DevOps',
+        tags TEXT[] DEFAULT '{}',
+        author_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        author_name VARCHAR(100) DEFAULT 'Jatin Sharma',
+        author_title VARCHAR(100) DEFAULT 'Senior DevOps Engineer',
+        cover_image VARCHAR(500),
+        read_time_minutes INTEGER DEFAULT 5,
+        view_count INTEGER DEFAULT 0,
+        is_featured BOOLEAN DEFAULT FALSE,
+        is_published BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
     await client.query('COMMIT');
     console.log('Migrations completed successfully.');
   } catch (error) {
