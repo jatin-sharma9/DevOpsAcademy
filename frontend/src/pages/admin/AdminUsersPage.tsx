@@ -13,7 +13,7 @@ const ROLE_COLORS: Record<string, string> = {
 };
 
 const DEMO_USERS = [
-  { id: 1, username: "Jatin.Sharma93", email: "jatinsharma932002@gmail.com", role: "admin", created_at: "2026-08-01T00:00:00Z" },
+  { id: 1, username: "Jatin_Sharma", email: "jatinsharma932002@gmail.com", role: "admin", created_at: "2026-08-01T00:00:00Z" },
   { id: 2, username: "alex_devops", email: "alex@example.com", role: "instructor", created_at: "2026-08-10T00:00:00Z" },
   { id: 3, username: "sarah_cloud", email: "sarah@cloudnative.io", role: "user", created_at: "2026-08-15T00:00:00Z" },
   { id: 4, username: "rahul_k8s", email: "rahul@infosys.com", role: "user", created_at: "2026-08-20T00:00:00Z" },

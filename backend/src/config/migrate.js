@@ -6,6 +6,16 @@ export const migrate = async () => {
     console.log('Running database migrations...');
     await client.query('BEGIN');
 
+    // Schema Migrations Tracking Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        id SERIAL PRIMARY KEY,
+        version VARCHAR(50) UNIQUE NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        applied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
     // Users table
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -197,6 +207,181 @@ export const migrate = async () => {
       );
     `);
 
+    // Quiz Attempts table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS quiz_attempts (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        quiz_id VARCHAR(100) NOT NULL,
+        course_id INTEGER REFERENCES courses(id) ON DELETE CASCADE,
+        score INTEGER NOT NULL CHECK (score >= 0 AND score <= 100),
+        passed BOOLEAN DEFAULT FALSE,
+        total_questions INTEGER DEFAULT 0,
+        correct_count INTEGER DEFAULT 0,
+        answers JSONB DEFAULT '{}'::jsonb,
+        percentage NUMERIC(5, 2),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      ALTER TABLE quiz_attempts ADD COLUMN IF NOT EXISTS answers JSONB DEFAULT '{}'::jsonb;
+      ALTER TABLE quiz_attempts ADD COLUMN IF NOT EXISTS percentage NUMERIC(5, 2);
+      ALTER TABLE quiz_attempts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+      CREATE INDEX IF NOT EXISTS idx_quiz_attempts_user ON quiz_attempts(user_id);
+    `);
+
+    // Lesson Notes table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS lesson_notes (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        lesson_id INTEGER REFERENCES lessons(id) ON DELETE CASCADE,
+        content TEXT NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, lesson_id)
+      );
+    `);
+
+    // User Badges table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_badges (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        badge_id VARCHAR(100) NOT NULL,
+        unlocked_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, badge_id)
+      );
+    `);
+
+    // Email Settings table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS email_settings (
+        id SERIAL PRIMARY KEY,
+        admin_email VARCHAR(255) DEFAULT 'jatinsharma932002@gmail.com',
+        smtp_host VARCHAR(255) DEFAULT 'smtp.gmail.com',
+        smtp_port INTEGER DEFAULT 587,
+        smtp_user VARCHAR(255) DEFAULT 'jatinsharma932002@gmail.com',
+        notify_on_registration BOOLEAN DEFAULT TRUE,
+        notify_on_enrollment BOOLEAN DEFAULT TRUE,
+        notify_on_contact BOOLEAN DEFAULT TRUE,
+        notify_on_support BOOLEAN DEFAULT TRUE,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Email Logs table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS email_logs (
+        id SERIAL PRIMARY KEY,
+        type VARCHAR(50) NOT NULL,
+        recipient VARCHAR(255) NOT NULL,
+        subject VARCHAR(255) NOT NULL,
+        payload JSONB DEFAULT '{}'::jsonb,
+        status VARCHAR(20) DEFAULT 'success' CHECK (status IN ('success', 'failure')),
+        error TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Course Reviews table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS course_reviews (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        course_id INTEGER REFERENCES courses(id) ON DELETE CASCADE,
+        rating INTEGER CHECK (rating >= 1 AND rating <= 5),
+        review_text TEXT,
+        is_approved BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, course_id)
+      );
+    `);
+
+    // Course Categories table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS categories (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        slug VARCHAR(100) UNIQUE NOT NULL,
+        description TEXT,
+        icon VARCHAR(50) DEFAULT 'Layers',
+        sort_order INTEGER DEFAULT 0,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_categories_slug ON categories(slug);
+
+      -- Seed standard DevOps curriculum categories
+      INSERT INTO categories (name, slug, description, sort_order)
+      VALUES
+        ('Operating Systems & Shell', 'os-shell', 'Linux command line, bash scripting, kernel debugging, and system administration.', 1),
+        ('Version Control', 'version-control', 'Git branching strategies, monorepo management, and code review automation.', 2),
+        ('Containerization', 'containerization', 'Docker daemon, multi-stage builds, rootless containers, and image optimization.', 3),
+        ('Orchestration & Kubernetes', 'orchestration', 'K8s cluster architecture, Helm, ingress controllers, operators, and stateful workloads.', 4),
+        ('Infrastructure as Code', 'iac', 'Terraform HCL, state management, provider configuration, and Terragrunt workflows.', 5),
+        ('CI/CD Automation', 'cicd', 'GitHub Actions, Jenkins pipelines, automated testing gates, and canary releases.', 6),
+        ('Cloud & AWS', 'aws', 'VPC networking, IAM policies, EKS clusters, ECS services, and cost optimization.', 7),
+        ('Observability & SRE', 'sre', 'Prometheus metrics, Grafana dashboards, OpenTelemetry, and incident management.', 8)
+      ON CONFLICT (slug) DO NOTHING;
+    `);
+
+    // Audit Logs table for security and admin action tracking
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        username VARCHAR(100),
+        action VARCHAR(100) NOT NULL,
+        resource VARCHAR(100) NOT NULL,
+        resource_id VARCHAR(100),
+        details JSONB DEFAULT '{}'::jsonb,
+        ip_address VARCHAR(50),
+        user_agent VARCHAR(255),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
+    `);
+
+    // Indexes for query optimization
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+      CREATE INDEX IF NOT EXISTS idx_courses_published ON courses(is_published);
+      CREATE INDEX IF NOT EXISTS idx_courses_category ON courses(category);
+      CREATE INDEX IF NOT EXISTS idx_lessons_course_id ON lessons(course_id);
+      CREATE INDEX IF NOT EXISTS idx_enrollments_user_id ON enrollments(user_id);
+      CREATE INDEX IF NOT EXISTS idx_enrollments_course_id ON enrollments(course_id);
+      CREATE INDEX IF NOT EXISTS idx_certificates_user_course ON certificates(user_id, course_id);
+      CREATE INDEX IF NOT EXISTS idx_certificates_hash ON certificates(certificate_hash);
+      CREATE INDEX IF NOT EXISTS idx_learning_goals_user_date ON learning_goals(user_id, target_date);
+      CREATE INDEX IF NOT EXISTS idx_daily_activity_user_date ON daily_learning_activity(user_id, activity_date);
+      CREATE INDEX IF NOT EXISTS idx_email_logs_recipient ON email_logs(recipient);
+      CREATE INDEX IF NOT EXISTS idx_email_logs_type ON email_logs(type);
+      CREATE INDEX IF NOT EXISTS idx_quiz_attempts_quiz_id ON quiz_attempts(quiz_id);
+      CREATE INDEX IF NOT EXISTS idx_lesson_notes_user_lesson ON lesson_notes(user_id, lesson_id);
+      CREATE INDEX IF NOT EXISTS idx_course_reviews_course ON course_reviews(course_id);
+      CREATE INDEX IF NOT EXISTS idx_course_reviews_approved ON course_reviews(is_approved);
+    `);
+
+    // Record schema versions in migration tracking table
+    const migrationBatches = [
+      ['001_core_platform_schema', 'Initial users, courses, lessons, enrollments, certificates, and learning trackers'],
+      ['002_email_dispatch_and_settings', 'Email dispatch logs and administrative notification settings'],
+      ['003_phase2_missing_apis', 'Curriculum categories, quiz attempts, lesson notes, and moderated course reviews'],
+      ['004_observability_audit_logs', 'Administrative audit logging trail and performance indexes'],
+    ];
+
+    for (const [version, description] of migrationBatches) {
+      await client.query(
+        `INSERT INTO schema_migrations (version, name)
+         VALUES ($1, $2)
+         ON CONFLICT (version) DO NOTHING`,
+        [version, description]
+      );
+    }
+
     await client.query('COMMIT');
     console.log('Migrations completed successfully.');
   } catch (error) {
@@ -208,9 +393,36 @@ export const migrate = async () => {
   }
 };
 
+/**
+ * Get all applied migrations and timestamps
+ */
+export const getMigrationStatus = async () => {
+  const client = await pool.connect();
+  try {
+    const res = await client.query('SELECT * FROM schema_migrations ORDER BY id ASC');
+    return res.rows;
+  } finally {
+    client.release();
+  }
+};
+
 if (process.argv[1] && process.argv[1].endsWith('migrate.js')) {
-  migrate().then(() => process.exit(0)).catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
+  if (process.argv.includes('--status')) {
+    getMigrationStatus()
+      .then((rows) => {
+        console.log('\n📊 [DevOps Academy Schema Migration Status]');
+        console.table(rows);
+        process.exit(0);
+      })
+      .catch((err) => {
+        console.error('Failed to get migration status:', err.message);
+        process.exit(1);
+      });
+  } else {
+    migrate().then(() => process.exit(0)).catch((err) => {
+      console.error(err);
+      process.exit(1);
+    });
+  }
 }
+

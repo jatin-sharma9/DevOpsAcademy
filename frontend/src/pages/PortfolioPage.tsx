@@ -145,7 +145,8 @@ export default function PortfolioPage() {
                 <Github className="w-4 h-4" /> GitHub Profile
               </a>
               <a 
-                href="#" 
+                href="/resume.pdf"
+                download="Jatin_Sharma_DevOps_Resume.pdf" 
                 className="px-6 py-3 rounded-xl border border-primary/30 text-primary font-semibold text-sm hover:bg-primary/10 transition-all flex items-center gap-2"
               >
                 <Download className="w-4 h-4" /> Download Resume

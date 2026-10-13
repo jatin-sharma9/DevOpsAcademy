@@ -137,7 +137,13 @@ export default function BlogDetailPage() {
             )) : <p className="text-xs text-muted-foreground">No related articles</p>}
 
             <div className="pt-3 border-t border-border">
-              <button className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-sm hover:bg-muted transition-colors">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(window.location.href);
+                  toast.success("Article link copied to clipboard!");
+                }}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-sm hover:bg-muted transition-colors cursor-pointer"
+              >
                 <Share2 className="w-3.5 h-3.5" /> Share Article
               </button>
             </div>

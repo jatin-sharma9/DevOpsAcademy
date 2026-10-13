@@ -1,37 +1,83 @@
-import jwt from 'jsonwebtoken';
+import { verifyToken } from '../utils/jwt.js';
 import { User } from '../models/userModel.js';
 
+/**
+ * Protect middleware: Ensures incoming request has a valid JWT token.
+ * Populates req.user with the authenticated user database record.
+ */
 export const protect = async (req, res, next) => {
   let token;
 
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-    token = req.headers.authorization.split(' ')[1];
+  const authHeader = req.headers.authorization;
+  if (authHeader) {
+    const parts = authHeader.trim().split(/\s+/);
+    if (parts.length === 2 && /^Bearer$/i.test(parts[0])) {
+      token = parts[1];
+    }
   }
 
   if (!token) {
-    return res.status(401).json({ message: 'Not authorized to access this route' });
+    return res.status(401).json({ 
+      success: false, 
+      message: 'Not authorized to access this route. No token provided.' 
+    });
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'devops_academy_super_secret_jwt_key_2026');
+    const decoded = verifyToken(token);
     const currentUser = await User.findById(decoded.id);
 
     if (!currentUser) {
-      return res.status(401).json({ message: 'User belonging to this token no longer exists' });
+      return res.status(401).json({ 
+        success: false, 
+        message: 'User belonging to this token no longer exists' 
+      });
     }
 
     req.user = currentUser;
     next();
   } catch (error) {
-    return res.status(401).json({ message: 'Token is invalid or expired' });
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Token has expired, please log in again',
+        expired: true 
+      });
+    }
+    return res.status(401).json({ 
+      success: false, 
+      message: 'Token is invalid or malformed' 
+    });
   }
 };
 
+/**
+ * Role-based authorization middleware:
+ * Ensures the authenticated user has one of the required roles.
+ * 
+ * @param  {...string} roles - Permitted roles (e.g. 'admin', 'instructor')
+ */
 export const authorize = (...roles) => {
   return (req, res, next) => {
-    if (!roles.includes(req.user.role)) {
-      return res.status(403).json({ message: `User role '${req.user.role}' is not authorized to access this route` });
+    if (!req.user) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Authentication required before checking permissions' 
+      });
     }
+
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({ 
+        success: false, 
+        message: `User role '${req.user.role}' is not authorized to access this route` 
+      });
+    }
+
     next();
   };
 };
+
+/**
+ * Shorthand middleware for admin-only routes
+ */
+export const requireAdmin = [protect, authorize('admin')];

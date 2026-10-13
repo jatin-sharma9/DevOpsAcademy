@@ -25,6 +25,13 @@ import PortfolioPage from "@/pages/PortfolioPage";
 import InterviewPrepPage from "@/pages/InterviewPrepPage";
 import LearningTrackerPage from "@/pages/LearningTrackerPage";
 import NetworkingPage from "@/pages/NetworkingPage";
+import ContactPage from "@/pages/ContactPage";
+import MissionsPage from "@/pages/MissionsPage";
+import ProductionDownMissionPage from "@/pages/ProductionDownMissionPage";
+import DockerBuildMissionPage from "@/pages/DockerBuildMissionPage";
+import KubernetesCrashLoopMissionPage from "@/pages/KubernetesCrashLoopMissionPage";
+import FailedCicdMissionPage from "@/pages/FailedCicdMissionPage";
+import LegalPage from "@/pages/LegalPage";
 import NotFoundPage from "@/pages/NotFoundPage";
 
 // Admin Pages
@@ -67,12 +74,22 @@ function AppRoutes() {
         <Route path="/networking" element={<Navigate to="/courses/networking-for-devops" replace />} />
         <Route path="/interview-prep" element={<InterviewPrepPage />} />
         <Route path="/tracker" element={<LearningTrackerPage />} />
+        <Route path="/missions" element={<MissionsPage />} />
+        <Route path="/missions/production-down" element={<ProductionDownMissionPage />} />
+        <Route path="/missions/docker-build" element={<DockerBuildMissionPage />} />
+        <Route path="/missions/kubernetes-crashloop" element={<KubernetesCrashLoopMissionPage />} />
+        <Route path="/missions/failed-cicd" element={<FailedCicdMissionPage />} />
         <Route path="/courses" element={<CourseCatalogPage />} />
         <Route path="/courses/:slug" element={<CourseDetailPage />} />
         <Route path="/blog" element={<BlogPage />} />
         <Route path="/blog/:slug" element={<BlogDetailPage />} />
         <Route path="/search" element={<SearchPage />} />
         <Route path="/certificate/:id" element={<CertificatePage />} />
+        <Route path="/contact" element={<ContactPage />} />
+        <Route path="/help" element={<LegalPage />} />
+        <Route path="/privacy" element={<LegalPage />} />
+        <Route path="/terms" element={<LegalPage />} />
+        <Route path="/community" element={<LegalPage />} />
       </Route>
 
       {/* Auth Routes */}
@@ -88,7 +105,7 @@ function AppRoutes() {
       </Route>
 
       {/* Admin Routes */}
-      <Route path="/admin" element={<ProtectedRoute roles={["admin", "instructor"]}><AdminLayout /></ProtectedRoute>}>
+      <Route path="/admin" element={<ProtectedRoute roles={["admin"]}><AdminLayout /></ProtectedRoute>}>
         <Route index element={<AdminDashboardPage />} />
         <Route path="courses" element={<AdminCoursesPage />} />
         <Route path="courses/add" element={<AdminAddCoursePage />} />

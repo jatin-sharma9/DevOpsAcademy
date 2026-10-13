@@ -24,12 +24,20 @@ export const Enrollment = {
     return res.rows;
   },
 
+  async findByUserAndCourse(userId, courseId) {
+    const res = await query(
+      `SELECT * FROM enrollments WHERE user_id = $1 AND course_id = $2`,
+      [userId, courseId]
+    );
+    return res.rows[0] || null;
+  },
+
   async updateProgress(userId, courseId, progress) {
     const completed = progress >= 100;
     const completedAt = completed ? new Date() : null;
     const res = await query(
       `UPDATE enrollments
-       SET progress = $1, completed = $2, completed_at = COALESCE(completed_at, $3)
+       SET progress = $1, completed = $2, completed_at = (CASE WHEN $2 THEN COALESCE(completed_at, $3) ELSE NULL END)
        WHERE user_id = $4 AND course_id = $5
        RETURNING *`,
       [progress, completed, completedAt, userId, courseId]

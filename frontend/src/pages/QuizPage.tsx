@@ -1,7 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Timer, CheckCircle2, XCircle, AlertCircle, ArrowRight, RotateCcw, Trophy, Zap, Award, Sparkles } from "lucide-react";
+import {
+  Timer, CheckCircle2, XCircle, AlertCircle, ArrowRight, RotateCcw,
+  Trophy, Zap, Award, Sparkles, Cloud, CloudOff, Loader2, History
+} from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { apiService, QuizAttemptData } from "@/services/apiService";
 import { getQuizByCourseSlug, QuizQuestion } from "@/data/quizzes";
 import { getCourseBySlug } from "@/data/courses";
 import { lmsStore } from "@/services/lmsStore";
@@ -15,12 +20,53 @@ export default function QuizPage() {
   const navigate = useNavigate();
   const course = getCourseBySlug(slug || "");
   const quiz = getQuizByCourseSlug(slug || "");
+  const { user } = useAuth();
   const [phase, setPhase] = useState<Phase>("intro");
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [revealed, setRevealed] = useState(false);
   const [timeLeft, setTimeLeft] = useState(quiz ? quiz.timeLimitMinutes * 60 : 0);
+  const [previousAttempts, setPreviousAttempts] = useState<any[]>([]);
+  const [loadingAttempts, setLoadingAttempts] = useState(false);
+  const [submittingAttempt, setSubmittingAttempt] = useState(false);
+  const [savedToCloud, setSavedToCloud] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    let isCancelled = false;
+    const fetchAttempts = async () => {
+      if (!quiz) return;
+      setLoadingAttempts(true);
+      try {
+        if (user) {
+          const res = await apiService.quizzes.getMyAttempts(quiz.id);
+          if (!isCancelled && res.success && Array.isArray(res.data)) {
+            setPreviousAttempts(res.data);
+            return;
+          }
+        }
+        // Fallback to local store
+        if (!isCancelled) {
+          const local = lmsStore.getQuizAttempts().filter(a => a.quizId === quiz.id);
+          setPreviousAttempts(local);
+        }
+      } catch (err) {
+        console.error("Failed to load previous quiz attempts:", err);
+        if (!isCancelled) {
+          const local = lmsStore.getQuizAttempts().filter(a => a.quizId === quiz.id);
+          setPreviousAttempts(local);
+        }
+      } finally {
+        if (!isCancelled) setLoadingAttempts(false);
+      }
+    };
+
+    fetchAttempts();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [quiz?.id, user, phase]);
 
   useEffect(() => {
     if (phase === "quiz") {
@@ -67,21 +113,49 @@ export default function QuizPage() {
 
   const handleReveal = () => setRevealed(true);
 
-  const handleFinishQuiz = () => {
-    clearInterval(timerRef.current!);
+  const handleFinishQuiz = async () => {
+    if (timerRef.current) clearInterval(timerRef.current);
     const calculatedScore = Math.round((quiz.questions.filter(q => answers[q.id] === q.correctAnswer).length / totalQ) * 100);
     const hasPassed = calculatedScore >= quiz.passingScore;
+    const correctCount = quiz.questions.filter(q => answers[q.id] === q.correctAnswer).length;
 
-    // Save to local store
+    // Save locally for offline resilience
     lmsStore.saveQuizAttempt({
       quizId: quiz.id,
       courseSlug: course.slug,
       score: calculatedScore,
       passed: hasPassed,
       totalQuestions: totalQ,
-      correctCount: quiz.questions.filter(q => answers[q.id] === q.correctAnswer).length,
+      correctCount,
       date: new Date().toISOString(),
     });
+
+    // Save to PostgreSQL if logged in
+    if (user) {
+      setSubmittingAttempt(true);
+      try {
+        const numericCourseId = course.id && !isNaN(Number(course.id)) ? Number(course.id) : undefined;
+        const res = await apiService.quizzes.submitAttempt({
+          quizId: quiz.id,
+          courseId: numericCourseId,
+          score: calculatedScore,
+          passed: hasPassed,
+          totalQuestions: totalQ,
+          correctCount,
+          answers,
+          percentage: calculatedScore,
+        });
+        if (res.success) {
+          setSavedToCloud(true);
+        }
+      } catch (err) {
+        console.error("Failed to submit quiz attempt to PostgreSQL:", err);
+      } finally {
+        setSubmittingAttempt(false);
+      }
+    } else {
+      setSavedToCloud(false);
+    }
 
     if (hasPassed) {
       toast.success(`🎉 Assessment Passed! Score: ${calculatedScore}%`);
@@ -146,8 +220,65 @@ export default function QuizPage() {
             </p>
             <p>• Select the single best answer for each scenario</p>
             <p>• Use "Reveal Answer" to review the technical explanation before moving forward</p>
-            <p>• Results are automatically saved to your student profile & competency radar</p>
+            <p>• Results are automatically saved to your PostgreSQL profile & competency tracker</p>
           </div>
+
+          {/* Previous Attempts Section */}
+          {loadingAttempts ? (
+            <div className="p-4 rounded-2xl border border-border bg-muted/20 flex items-center justify-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin text-primary" />
+              <span>Loading assessment history...</span>
+            </div>
+          ) : previousAttempts.length > 0 ? (
+            <div className="text-left space-y-2 p-4 rounded-2xl border border-border/70 bg-card/60">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-xs flex items-center gap-1.5 text-foreground">
+                  <History className="w-3.5 h-3.5 text-primary" /> Your Previous Attempts ({previousAttempts.length})
+                </h3>
+                {user ? (
+                  <span className="text-[10px] text-green-400 flex items-center gap-1">
+                    <Cloud className="w-3 h-3" /> Synced to Cloud
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-amber-400 flex items-center gap-1">
+                    <CloudOff className="w-3 h-3" /> Local Attempts
+                  </span>
+                )}
+              </div>
+              <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                {previousAttempts.slice(0, 4).map((att, i) => {
+                  const attDate = att.created_at || att.date;
+                  const attScore = att.score ?? 0;
+                  const attPassed = att.passed ?? (attScore >= quiz.passingScore);
+                  return (
+                    <div key={att.id || i} className="flex items-center justify-between p-2 rounded-xl bg-muted/40 text-xs">
+                      <div>
+                        <span className="font-mono font-medium">Attempt #{previousAttempts.length - i}</span>
+                        <span className="text-[10px] text-muted-foreground ml-2">
+                          {attDate ? new Date(attDate).toLocaleDateString() : "Recent"}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold">{attScore}%</span>
+                        <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-semibold", attPassed ? "bg-green-500/15 text-green-400" : "bg-destructive/15 text-destructive")}>
+                          {attPassed ? "Passed" : "Failed"}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          {!user && (
+            <div className="p-3 rounded-xl bg-muted/60 border border-border flex items-center justify-between text-xs text-muted-foreground">
+              <span>💡 Sign in to persist your assessment history in PostgreSQL cloud.</span>
+              <Link to="/login" className="text-primary font-semibold hover:underline">
+                Sign In
+              </Link>
+            </div>
+          )}
 
           <button
             onClick={() => setPhase("quiz")}
@@ -180,6 +311,30 @@ export default function QuizPage() {
                 className={cn("h-full rounded-full transition-all duration-700", passed ? "bg-green-400" : "bg-destructive")}
                 style={{ width: `${score}%` }}
               />
+            </div>
+
+            {/* Cloud Persistence Badge */}
+            <div className="flex justify-center">
+              {user ? (
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/25">
+                  {submittingAttempt ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Syncing score to PostgreSQL cloud profile...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Cloud className="w-3.5 h-3.5" />
+                      <span>Saved to PostgreSQL Cloud Profile</span>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-300 border border-amber-500/25">
+                  <CloudOff className="w-3.5 h-3.5" />
+                  <span>Saved locally in browser. <Link to="/login" className="underline font-semibold ml-1">Sign in</Link> to sync to cloud</span>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-3 justify-center flex-wrap pt-2">

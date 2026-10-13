@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { 
   Mail, Send, CheckCircle2, XCircle, Settings, ShieldCheck, 
@@ -8,6 +8,7 @@ import {
   getEmailSettings, saveEmailSettings, getEmailLogs, 
   sendEmailNotification, EmailSettings, EmailLog 
 } from "@/services/emailService";
+import { apiService } from "@/services/apiService";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -17,31 +18,86 @@ export default function AdminEmailSettingsPage() {
   const [sendingTest, setSendingTest] = useState(false);
   const [activeTab, setActiveTab] = useState<"settings" | "logs">("settings");
 
-  const handleSave = (e: React.FormEvent) => {
+  const loadData = async () => {
+    try {
+      const [settingsRes, logsRes] = await Promise.all([
+        apiService.admin.getEmailSettings(),
+        apiService.admin.getEmailLogs(),
+      ]);
+
+      if (settingsRes?.success && settingsRes?.data) {
+        const d = settingsRes.data;
+        const mappedSettings: EmailSettings = {
+          adminEmail: d.admin_email || "jatinsharma932002@gmail.com",
+          smtpHost: d.smtp_host || "smtp.gmail.com",
+          smtpPort: d.smtp_port || 587,
+          smtpUser: d.smtp_user || "jatinsharma932002@gmail.com",
+          notifyOnRegistration: d.notify_on_registration !== false,
+          notifyOnEnrollment: d.notify_on_enrollment !== false,
+          notifyOnContact: d.notify_on_contact !== false,
+          notifyOnSupport: d.notify_on_support !== false,
+        };
+        setSettings(mappedSettings);
+        saveEmailSettings(mappedSettings);
+      }
+
+      if (logsRes?.success && Array.isArray(logsRes?.data)) {
+        const dbLogs: EmailLog[] = logsRes.data.map((l: any) => ({
+          id: `log_${l.id}`,
+          type: (l.type || "test_email") as any,
+          recipient: l.recipient,
+          subject: l.subject,
+          payload: l.payload || {},
+          status: l.status || "success",
+          timestamp: l.created_at || new Date().toISOString(),
+          error: l.error,
+        }));
+        setLogs(dbLogs);
+      }
+    } catch (err) {
+      console.error("Failed to load email settings from DB:", err);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    saveEmailSettings(settings);
-    toast.success("Email notification settings saved!");
+    try {
+      await apiService.admin.saveEmailSettings({
+        admin_email: settings.adminEmail,
+        smtp_host: settings.smtpHost,
+        smtp_port: settings.smtpPort,
+        smtp_user: settings.smtpUser,
+        notify_on_registration: settings.notifyOnRegistration,
+        notify_on_enrollment: settings.notifyOnEnrollment,
+        notify_on_contact: settings.notifyOnContact,
+        notify_on_support: settings.notifyOnSupport,
+      });
+      saveEmailSettings(settings);
+      toast.success("Email notification settings saved to database!");
+      await loadData();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Failed to save settings");
+    }
   };
 
   const handleSendTestEmail = async () => {
     setSendingTest(true);
-    const ok = await sendEmailNotification(
-      "test_email",
-      "🧪 Test Email Notification - DevOps Academy",
-      {
-        fullName: "System Admin",
-        email: settings.adminEmail,
-        dateTime: new Date().toLocaleString(),
-        note: "SMTP email dispatch test successful.",
+    try {
+      const res = await apiService.admin.sendTestEmail(settings.adminEmail, "test");
+      setSendingTest(false);
+      if (res && res.success) {
+        toast.success(`Test email sent successfully to ${settings.adminEmail}`);
+      } else {
+        toast.error("Failed to send test email");
       }
-    );
-    setSendingTest(false);
-    setLogs(getEmailLogs());
-
-    if (ok) {
-      toast.success(`Test email sent successfully to ${settings.adminEmail}`);
-    } else {
-      toast.error("Failed to send test email. Check log details.");
+      await loadData();
+    } catch (err: any) {
+      setSendingTest(false);
+      toast.error(err.response?.data?.message || "Failed to send test email");
     }
   };
 

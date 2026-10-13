@@ -7,20 +7,24 @@ export const seed = async () => {
 
     const salt = await bcrypt.genSalt(10);
     
+    const adminUsername = process.env.DEFAULT_ADMIN_USERNAME || 'Jatin_Sharma';
+    const adminEmail = process.env.DEFAULT_ADMIN_EMAIL || process.env.ADMIN_EMAIL || 'jatinsharma932002@gmail.com';
+    const adminPassword = process.env.DEFAULT_ADMIN_PASSWORD || 'J@tinS93';
+
     // Hash passwords
-    const adminPass = await bcrypt.hash('J@tinS93', salt);
+    const adminPass = await bcrypt.hash(adminPassword, salt);
     const userPass = await bcrypt.hash('user123', salt);
 
-    // Insert Admin
+    // Insert or update Admin (Default: Jatin_Sharma)
     const adminRes = await query(`
       INSERT INTO users (username, email, password_hash, role)
-      VALUES ('Jatin.Sharma93', 'jatinsharma932002@gmail.com', $1, 'admin')
+      VALUES ($1, $2, $3, 'admin')
       ON CONFLICT (email) DO UPDATE SET 
         username = EXCLUDED.username, 
         password_hash = EXCLUDED.password_hash, 
         role = EXCLUDED.role
       RETURNING id;
-    `, [adminPass]);
+    `, [adminUsername, adminEmail, adminPass]);
 
     const adminId = adminRes.rows[0]?.id;
 

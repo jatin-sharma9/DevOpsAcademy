@@ -21,7 +21,7 @@ import { getCourseLearningGuide } from "@/data/learningGuides";
 
 export default function CourseDetailPage() {
   const { slug } = useParams<{ slug: string }>();
-  const { isAuthenticated } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
   const [course, setCourse] = useState<Course | any | null>(null);
@@ -36,6 +36,23 @@ export default function CourseDetailPage() {
   const [copiedLink, setCopiedLink] = useState(false);
   const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(null);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
+
+  // PostgreSQL Reviews state
+  const [reviews, setReviews] = useState<any[]>([]);
+  const [reviewStats, setReviewStats] = useState<{
+    totalReviews: number;
+    averageRating: number;
+    distribution: Record<string, number>;
+  }>({
+    totalReviews: 0,
+    averageRating: 5.0,
+    distribution: { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0 },
+  });
+  const [loadingReviews, setLoadingReviews] = useState(false);
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewRating, setReviewRating] = useState<number>(5);
+  const [reviewHoverRating, setReviewHoverRating] = useState<number>(0);
+  const [reviewText, setReviewText] = useState<string>("");
 
   // Load Course and Enrollment Status
   useEffect(() => {
@@ -138,6 +155,84 @@ export default function CourseDetailPage() {
 
   // First video lesson for quick preview
   const firstVideoLesson = course.sections?.flatMap((s: any) => s.lessons || []).find((l: any) => l.youtubeUrl || l.preview);
+
+  const fetchReviews = async (courseIdOrSlug?: string | number) => {
+    const target = courseIdOrSlug || course?.id || course?.slug || slug;
+    if (!target) return;
+    setLoadingReviews(true);
+    try {
+      const res = await apiService.reviews.getCourseReviews(target);
+      if (res.success && Array.isArray(res.data)) {
+        setReviews(res.data);
+        if (res.stats) {
+          setReviewStats(res.stats);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch course reviews:", err);
+    } finally {
+      setLoadingReviews(false);
+    }
+  };
+
+  useEffect(() => {
+    if (slug || course?.id) {
+      fetchReviews(course?.id || slug);
+    }
+  }, [slug, course?.id]);
+
+  const userExistingReview = reviews.find(
+    (r) => (user?.id && r.user_id === user.id) || (user?.email && r.user_email === user.email)
+  );
+
+  useEffect(() => {
+    if (userExistingReview && !reviewText) {
+      setReviewRating(userExistingReview.rating || 5);
+      setReviewText(userExistingReview.review_text || "");
+    }
+  }, [userExistingReview]);
+
+  const handleSubmitReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isAuthenticated) {
+      toast.error("Please sign in to submit a review.");
+      navigate("/login");
+      return;
+    }
+    if (!isEnrolled && user?.role !== "admin") {
+      toast.error("Only enrolled students can review this course.");
+      return;
+    }
+    if (reviewText.trim().length < 5) {
+      toast.error("Review feedback must be at least 5 characters long.");
+      return;
+    }
+
+    setSubmittingReview(true);
+    try {
+      const targetId = course?.id || course?.slug || slug;
+      const res = await apiService.reviews.submitReview(targetId, {
+        rating: reviewRating,
+        reviewText: reviewText.trim(),
+      });
+
+      if (res.success) {
+        toast.success(res.message || "Review submitted successfully!");
+        await fetchReviews(targetId);
+      } else {
+        toast.error(res.message || "Failed to submit review.");
+      }
+    } catch (err: any) {
+      console.error("Submit review error:", err);
+      if (err.response?.status === 403) {
+        toast.error(err.response?.data?.message || "Only enrolled students can review this course.");
+      } else {
+        toast.error(err.response?.data?.message || "Failed to submit review. Please try again.");
+      }
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
 
   const handleEnrollOrContinue = async () => {
     try {
@@ -905,80 +1000,230 @@ export default function CourseDetailPage() {
                 {/* Rating Overview */}
                 <div className="p-6 sm:p-8 rounded-2xl border border-border bg-card grid grid-cols-1 sm:grid-cols-3 gap-6 items-center">
                   <div className="text-center sm:border-r sm:border-border sm:pr-6">
-                    <div className="text-5xl font-display font-bold text-primary">{course.rating || 4.9}</div>
+                    <div className="text-5xl font-display font-bold text-primary">
+                      {reviewStats.totalReviews > 0 ? reviewStats.averageRating.toFixed(1) : (course.rating || 5.0)}
+                    </div>
                     <div className="flex justify-center items-center gap-1 my-2 text-yellow-400">
                       {[...Array(5)].map((_, i) => (
-                        <Star key={i} className="w-4 h-4 fill-yellow-400" />
+                        <Star
+                          key={i}
+                          className={cn(
+                            "w-4 h-4",
+                            i < Math.round(reviewStats.totalReviews > 0 ? reviewStats.averageRating : (course.rating || 5))
+                              ? "fill-yellow-400 text-yellow-400"
+                              : "text-muted-foreground/30"
+                          )}
+                        />
                       ))}
                     </div>
-                    <p className="text-xs text-muted-foreground">Course Rating · {(course.totalRatings || 2800).toLocaleString()} Reviews</p>
+                    <p className="text-xs text-muted-foreground">
+                      {reviewStats.totalReviews > 0
+                        ? `${reviewStats.totalReviews} Verified Review${reviewStats.totalReviews === 1 ? "" : "s"}`
+                        : "No reviews submitted yet"}
+                    </p>
                   </div>
 
                   <div className="sm:col-span-2 space-y-2">
-                    {[
-                      { stars: 5, pct: 92 },
-                      { stars: 4, pct: 6 },
-                      { stars: 3, pct: 2 },
-                      { stars: 2, pct: 0 },
-                      { stars: 1, pct: 0 },
-                    ].map((row) => (
-                      <div key={row.stars} className="flex items-center gap-3 text-xs">
-                        <span className="w-12 font-medium">{row.stars} stars</span>
-                        <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                          <div className="h-full bg-yellow-400 rounded-full" style={{ width: `${row.pct}%` }} />
+                    {[5, 4, 3, 2, 1].map((stars) => {
+                      const count = reviewStats.distribution?.[String(stars)] || 0;
+                      const pct = reviewStats.totalReviews > 0 ? Math.round((count / reviewStats.totalReviews) * 100) : 0;
+                      return (
+                        <div key={stars} className="flex items-center gap-3 text-xs">
+                          <span className="w-12 font-medium text-foreground">{stars} stars</span>
+                          <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                            <div
+                              className="h-full bg-yellow-400 rounded-full transition-all duration-500"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                          <span className="w-8 text-right text-muted-foreground font-mono">{pct}%</span>
                         </div>
-                        <span className="w-8 text-right text-muted-foreground font-mono">{row.pct}%</span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 
-                {/* Review Cards */}
-                <div className="space-y-4">
-                  {[
-                    {
-                      name: "Rahul Verma",
-                      role: "DevOps Engineer at Swiggy",
-                      rating: 5,
-                      date: "2 weeks ago",
-                      comment: "One of the best structured courses on DevOps. The hands-on examples and command line explanations made complex production topics crystal clear!"
-                    },
-                    {
-                      name: "Priya Sundaram",
-                      role: "Cloud Architect at Infosys",
-                      rating: 5,
-                      date: "1 month ago",
-                      comment: "Extremely well articulated. The real-world production incident examples helped me crack my Senior DevOps interview questions."
-                    },
-                    {
-                      name: "Amit Patel",
-                      role: "Site Reliability Engineer",
-                      rating: 5,
-                      date: "Last month",
-                      comment: "Clean explanations, instant quiz feedback, and the downloadable certificate is a great resume booster. 10/10 recommendation!"
-                    }
-                  ].map((rev, i) => (
-                    <div key={i} className="p-5 rounded-xl border border-border bg-card space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-primary/20 text-primary font-bold text-xs flex items-center justify-center">
-                            {rev.name.charAt(0)}
-                          </div>
-                          <div>
-                            <div className="text-sm font-semibold">{rev.name}</div>
-                            <div className="text-xs text-muted-foreground">{rev.role}</div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1 text-yellow-400">
-                          {[...Array(rev.rating)].map((_, s) => (
-                            <Star key={s} className="w-3.5 h-3.5 fill-yellow-400" />
+                {/* Review Submission Form / Eligibility Gate */}
+                {!isAuthenticated ? (
+                  <div className="p-5 rounded-2xl border border-dashed border-border bg-muted/20 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
+                    <div>
+                      <h4 className="font-semibold text-sm text-foreground">Enrolled in this course?</h4>
+                      <p className="text-xs text-muted-foreground mt-0.5">Sign in to share your verified student review and rating.</p>
+                    </div>
+                    <Link
+                      to="/login"
+                      className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-all shrink-0 shadow-sm"
+                    >
+                      Sign In to Review
+                    </Link>
+                  </div>
+                ) : !isEnrolled && user?.role !== "admin" ? (
+                  <div className="p-5 rounded-2xl border border-amber-500/25 bg-amber-500/10 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
+                    <div>
+                      <h4 className="font-semibold text-sm text-amber-300">Reviews for Enrolled Students Only</h4>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Enroll in this course to access the curriculum, build projects, and share your experience with other developers.
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleEnrollOrContinue}
+                      className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-all shrink-0 cursor-pointer shadow-sm shadow-primary/20"
+                    >
+                      Enroll in Course
+                    </button>
+                  </div>
+                ) : (
+                  <div className="p-6 rounded-2xl border border-primary/25 bg-card space-y-4 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-bold text-sm text-foreground">
+                          {userExistingReview ? "Update Your Review" : "Leave a Student Review"}
+                        </h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Share your feedback on the curriculum, hands-on labs, and real-world applicability.
+                        </p>
+                      </div>
+                      {userExistingReview && (
+                        <span className="text-[11px] font-medium text-primary bg-primary/10 border border-primary/25 px-2.5 py-0.5 rounded-full">
+                          Previously Submitted
+                        </span>
+                      )}
+                    </div>
+
+                    <form onSubmit={handleSubmitReview} className="space-y-4">
+                      {/* Interactive Star Rating Selector */}
+                      <div>
+                        <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                          Your Rating
+                        </label>
+                        <div className="flex items-center gap-1">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <button
+                              type="button"
+                              key={star}
+                              onClick={() => setReviewRating(star)}
+                              onMouseEnter={() => setReviewHoverRating(star)}
+                              onMouseLeave={() => setReviewHoverRating(0)}
+                              className="p-1 text-muted-foreground hover:text-yellow-400 transition-colors cursor-pointer"
+                            >
+                              <Star
+                                className={cn(
+                                  "w-6 h-6 transition-all",
+                                  (reviewHoverRating || reviewRating) >= star
+                                    ? "fill-yellow-400 text-yellow-400 scale-110"
+                                    : "text-muted-foreground/30 hover:scale-105"
+                                )}
+                              />
+                            </button>
                           ))}
+                          <span className="text-xs font-bold text-foreground ml-2">
+                            {reviewHoverRating || reviewRating} / 5 Stars
+                          </span>
                         </div>
                       </div>
-                      <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">{rev.comment}</p>
-                      <div className="text-[11px] text-muted-foreground/60">{rev.date}</div>
+
+                      {/* Review Textarea */}
+                      <div>
+                        <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                          Your Review Comment
+                        </label>
+                        <textarea
+                          value={reviewText}
+                          onChange={(e) => setReviewText(e.target.value)}
+                          rows={4}
+                          placeholder="How was your learning experience? (Minimum 5 characters)"
+                          required
+                          minLength={5}
+                          maxLength={1000}
+                          className="w-full p-3.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 leading-relaxed"
+                        />
+                        <div className="flex justify-between text-[11px] text-muted-foreground mt-1">
+                          <span>Minimum 5 characters</span>
+                          <span>{reviewText.length}/1000</span>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="submit"
+                          disabled={submittingReview || reviewText.trim().length < 5}
+                          className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-all cursor-pointer disabled:opacity-50 shadow-md shadow-primary/20"
+                        >
+                          {submittingReview ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Star className="w-3.5 h-3.5 fill-current" />
+                          )}
+                          <span>
+                            {userExistingReview
+                              ? submittingReview
+                                ? "Updating Review..."
+                                : "Update Review"
+                              : submittingReview
+                              ? "Submitting Review..."
+                              : "Submit Review"}
+                          </span>
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                )}
+
+                {/* Reviews List */}
+                <div className="space-y-4">
+                  <h3 className="font-display font-semibold text-base text-foreground">
+                    Student Feedback ({reviews.length})
+                  </h3>
+
+                  {loadingReviews ? (
+                    <div className="p-8 rounded-2xl border border-border bg-card flex flex-col items-center justify-center gap-2 text-xs text-muted-foreground">
+                      <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                      <span>Loading verified student reviews from PostgreSQL...</span>
                     </div>
-                  ))}
+                  ) : reviews.length === 0 ? (
+                    <div className="p-8 rounded-2xl border border-dashed border-border bg-card text-center space-y-2">
+                      <MessageSquare className="w-8 h-8 text-muted-foreground mx-auto" />
+                      <p className="text-sm font-semibold text-foreground">No Student Reviews Yet</p>
+                      <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                        Be the first verified enrolled student to share feedback on this DevOps track!
+                      </p>
+                    </div>
+                  ) : (
+                    reviews.map((rev: any) => {
+                      const reviewerName = rev.user_name || (rev.user_email ? rev.user_email.split("@")[0] : "Verified Student");
+                      const initial = reviewerName.charAt(0).toUpperCase();
+                      const formattedDate = rev.created_at ? new Date(rev.created_at).toLocaleDateString() : "Recent";
+                      return (
+                        <div key={rev.id} className="p-5 rounded-xl border border-border bg-card space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-primary/20 text-primary font-bold text-xs flex items-center justify-center">
+                                {initial}
+                              </div>
+                              <div>
+                                <div className="text-sm font-semibold flex items-center gap-1.5">
+                                  <span>{reviewerName}</span>
+                                  <span className="text-[10px] text-green-400 bg-green-500/10 border border-green-500/25 px-1.5 py-0.2 rounded font-medium">
+                                    Enrolled Student
+                                  </span>
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {rev.user_email ? rev.user_email : "DevOps Learner"}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 text-yellow-400">
+                              {[...Array(rev.rating || 5)].map((_, s) => (
+                                <Star key={s} className="w-3.5 h-3.5 fill-yellow-400" />
+                              ))}
+                            </div>
+                          </div>
+                          <p className="text-xs sm:text-sm text-foreground/90 leading-relaxed">{rev.review_text}</p>
+                          <div className="text-[11px] text-muted-foreground/60">{formattedDate}</div>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </motion.div>
             )}

@@ -2,19 +2,26 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { Terminal, Github, Linkedin, Twitter, Youtube, Mail } from "lucide-react";
 
-const FOOTER_LINKS = {
+interface FooterLink {
+  label: string;
+  href: string;
+  download?: string;
+}
+
+const FOOTER_LINKS: Record<string, FooterLink[]> = {
   "Learning": [
     { label: "All Courses", href: "/courses" },
+    { label: "Mission Control", href: "/missions" },
     { label: "Networking for DevOps", href: "/courses/networking-for-devops" },
     { label: "Learning Paths", href: "/courses?tab=paths" },
     { label: "Free Courses", href: "/courses?filter=free" },
     { label: "Certifications", href: "/courses?tab=certs" },
   ],
   "Platform": [
+    { label: "Portfolio", href: "/portfolio" },
     { label: "Blog", href: "/blog" },
-    { label: "Search", href: "/search" },
+    { label: "Resume (PDF)", href: "/resume.pdf", download: "Jatin_Sharma_DevOps_Resume.pdf" },
     { label: "Dashboard", href: "/dashboard" },
-    { label: "Community", href: "/community" },
   ],
   "Support": [
     { label: "Help Center", href: "/help" },
@@ -78,9 +85,21 @@ export default function Footer() {
               <ul className="space-y-2.5">
                 {links.map((link) => (
                   <li key={link.label}>
-                    <Link to={link.href} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                      {link.label}
-                    </Link>
+                    {link.href.startsWith("http") || link.href.endsWith(".pdf") ? (
+                      <a 
+                        href={link.href} 
+                        download={link.download} 
+                        target={link.href.startsWith("http") ? "_blank" : undefined}
+                        rel="noreferrer"
+                        className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {link.label}
+                      </a>
+                    ) : (
+                      <Link to={link.href} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                        {link.label}
+                      </Link>
+                    )}
                   </li>
                 ))}
               </ul>

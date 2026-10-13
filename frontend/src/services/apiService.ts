@@ -4,7 +4,7 @@ import { SiLinux, SiGit, SiDocker, SiKubernetes, SiJenkins, SiTerraform, SiAnsib
 import { Cloud, HelpCircle } from 'lucide-react';
 import { COURSES } from '@/data/courses';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -32,10 +32,11 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      // Clear storage and redirect if token expired
+      const hadToken = !!localStorage.getItem('da-token');
+      // Clear storage if token was invalid or expired
       localStorage.removeItem('da-user');
       localStorage.removeItem('da-token');
-      if (window.location.pathname !== '/login') {
+      if (hadToken && window.location.pathname !== '/login') {
         window.location.href = '/login';
       }
     }
@@ -83,6 +84,85 @@ export interface ContactData {
   message: string;
 }
 
+export interface LessonNoteData {
+  id: number;
+  user_id: number;
+  lesson_id: number;
+  content: string;
+  created_at: string;
+  updated_at: string;
+  lesson_title?: string;
+  lesson_slug?: string;
+  course_id?: number;
+  course_title?: string;
+  course_slug?: string;
+}
+
+export interface QuizAttemptData {
+  id: number;
+  user_id: number;
+  quiz_id: string;
+  course_id?: number | null;
+  score: number;
+  passed: boolean;
+  total_questions: number;
+  correct_count: number;
+  answers?: Record<string, any>;
+  percentage?: number;
+  created_at: string;
+  course_title?: string;
+  course_slug?: string;
+  course_category?: string;
+}
+
+export interface QuizStatsData {
+  quizId: string;
+  totalAttempts: number;
+  uniqueUsers: number;
+  passCount: number;
+  passRate: number;
+  averageScore: number;
+  highestScore: number;
+  lowestScore: number;
+  recentAttempts: Array<{
+    id: number;
+    score: number;
+    passed: boolean;
+    correct_count: number;
+    total_questions: number;
+    created_at: string;
+    username: string;
+  }>;
+}
+
+export interface CourseReviewData {
+  id: number;
+  user_id: number;
+  course_id: number;
+  rating: number;
+  review_text: string;
+  is_approved: boolean;
+  created_at: string;
+  updated_at: string;
+  username: string;
+  user_role?: string;
+  course_title?: string;
+  course_slug?: string;
+}
+
+export interface ReviewStatsData {
+  totalReviews: number;
+  averageRating: number;
+  distribution: {
+    5: number;
+    4: number;
+    3: number;
+    2: number;
+    1: number;
+    [key: string]: number;
+  };
+}
+
 // Typed API Requests
 export const apiService = {
   // --- AUTHENTICATION ---
@@ -91,7 +171,7 @@ export const apiService = {
       const res = await api.post('/auth/login', data);
       return res.data;
     },
-    async register(data: { username: string; email: string; password: string }) {
+    async register(data: { username: string; email: string; password: string; role?: string }) {
       const res = await api.post('/auth/register', data);
       return res.data;
     },
@@ -276,6 +356,62 @@ export const apiService = {
       const res = await api.delete(`/admin/notifications/${id}`);
       return res.data;
     },
+    async getAnalytics() {
+      const res = await api.get('/admin/analytics');
+      return res.data;
+    },
+    async getCertificates() {
+      const res = await api.get('/admin/certificates');
+      return res.data;
+    },
+    async issueCertificate(data: { student: string; courseSlug: string; score?: string }) {
+      const res = await api.post('/admin/certificates', data);
+      return res.data;
+    },
+    async deleteCertificate(id: string | number) {
+      const res = await api.delete(`/admin/certificates/${id}`);
+      return res.data;
+    },
+    async getEmailSettings() {
+      const res = await api.get('/admin/email/settings');
+      return res.data;
+    },
+    async saveEmailSettings(data: any) {
+      const res = await api.put('/admin/email/settings', data);
+      return res.data;
+    },
+    async sendTestEmail(to?: string, type?: string) {
+      const res = await api.post('/admin/email/test', { to, type });
+      return res.data;
+    },
+    async getEmailLogs() {
+      const res = await api.get('/admin/email/logs');
+      return res.data;
+    },
+  },
+
+  // --- CATEGORIES ---
+  categories: {
+    async getAll() {
+      const res = await api.get('/categories');
+      return res.data;
+    },
+    async getBySlug(slug: string) {
+      const res = await api.get(`/categories/${slug}`);
+      return res.data;
+    },
+    async create(data: { name: string; slug?: string; description?: string; icon?: string; sort_order?: number }) {
+      const res = await api.post('/categories', data);
+      return res.data;
+    },
+    async update(id: number | string, data: { name?: string; slug?: string; description?: string; icon?: string; sort_order?: number }) {
+      const res = await api.put(`/categories/${id}`, data);
+      return res.data;
+    },
+    async delete(id: number | string) {
+      const res = await api.delete(`/categories/${id}`);
+      return res.data;
+    },
   },
 
   // --- ADMIN USERS ---
@@ -343,6 +479,80 @@ export const apiService = {
      */
     async logTime(minutes: number) {
       const res = await api.post('/tracker/activity', { minutes });
+      return res.data;
+    },
+  },
+
+  // --- QUIZZES ---
+  quizzes: {
+    async submitAttempt(data: {
+      quizId: string;
+      courseId?: number;
+      score: number;
+      passed?: boolean;
+      totalQuestions?: number;
+      correctCount?: number;
+      answers?: Record<string, any>;
+      percentage?: number;
+    }) {
+      const res = await api.post('/quizzes/attempts', data);
+      return res.data;
+    },
+    async getMyAttempts(quizId?: string, courseId?: number) {
+      const params = new URLSearchParams();
+      if (quizId) params.append('quizId', quizId);
+      if (courseId) params.append('courseId', String(courseId));
+      const res = await api.get(`/quizzes/my-attempts${params.toString() ? `?${params.toString()}` : ''}`);
+      return res.data;
+    },
+    async getStats(quizId: string) {
+      const res = await api.get(`/quizzes/${quizId}/stats`);
+      return res.data;
+    },
+  },
+
+  // --- LESSON NOTES ---
+  notes: {
+    async getLessonNotes(lessonId: number) {
+      const res = await api.get(`/lessons/${lessonId}/notes`);
+      return res.data;
+    },
+    async saveLessonNotes(lessonId: number, content: string) {
+      const res = await api.put(`/lessons/${lessonId}/notes`, { content });
+      return res.data;
+    },
+    async deleteLessonNotes(lessonId: number) {
+      const res = await api.delete(`/lessons/${lessonId}/notes`);
+      return res.data;
+    },
+    async getMyNotes(courseId?: number) {
+      const url = courseId ? `/lessons/notes/my?courseId=${courseId}` : '/lessons/notes/my';
+      const res = await api.get(url);
+      return res.data;
+    },
+  },
+
+  // --- COURSE REVIEWS ---
+  reviews: {
+    async getCourseReviews(courseId: number | string, approvedOnly = true) {
+      const res = await api.get(`/courses/${courseId}/reviews?approvedOnly=${approvedOnly}`);
+      return res.data;
+    },
+    async submitReview(courseId: number | string, data: { rating: number; reviewText?: string }) {
+      const res = await api.post(`/courses/${courseId}/reviews`, data);
+      return res.data;
+    },
+    async moderateReview(id: number, isApproved: boolean) {
+      const res = await api.put(`/admin/reviews/${id}/moderate`, { isApproved });
+      return res.data;
+    },
+    async getAllAdmin(isApproved?: boolean) {
+      const url = isApproved !== undefined ? `/admin/reviews?isApproved=${isApproved}` : '/admin/reviews';
+      const res = await api.get(url);
+      return res.data;
+    },
+    async deleteAdmin(id: number) {
+      const res = await api.delete(`/admin/reviews/${id}`);
       return res.data;
     },
   },

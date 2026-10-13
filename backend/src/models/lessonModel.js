@@ -20,24 +20,81 @@ export const Lesson = {
   },
 
   async create(lessonData) {
-    const { courseId, title, slug, description, content, videoUrl, sortOrder, durationMinutes } = lessonData;
+    const {
+      courseId,
+      title,
+      slug,
+      description,
+      content,
+      videoUrl,
+      video_url,
+      sortOrder,
+      sort_order,
+      durationMinutes,
+      duration_minutes,
+    } = lessonData;
+
+    const generatedSlug = (slug || title || 'lesson')
+      .toLowerCase()
+      .trim()
+      .replace(/[^\w\s-]/g, '')
+      .replace(/[\s_-]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+
+    const finalVideoUrl = videoUrl !== undefined ? videoUrl : (video_url || null);
+    const finalSortOrder = sortOrder !== undefined ? sortOrder : (sort_order !== undefined ? sort_order : 0);
+    const finalDurationMinutes = durationMinutes !== undefined ? durationMinutes : (duration_minutes !== undefined ? duration_minutes : 0);
+    const finalDescription = description || '';
+
     const res = await query(
       `INSERT INTO lessons (course_id, title, slug, description, content, video_url, sort_order, duration_minutes)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
-      [courseId, title, slug, description, content, videoUrl, sortOrder || 0, durationMinutes || 0]
+      [courseId, title, generatedSlug, finalDescription, content || '', finalVideoUrl, finalSortOrder, finalDurationMinutes]
     );
     return res.rows[0];
   },
 
   async update(id, lessonData) {
-    const { title, slug, description, content, videoUrl, sortOrder, durationMinutes } = lessonData;
+    const {
+      title,
+      slug,
+      description,
+      content,
+      videoUrl,
+      video_url,
+      sortOrder,
+      sort_order,
+      durationMinutes,
+      duration_minutes,
+    } = lessonData;
+
+    const finalVideoUrl = videoUrl !== undefined ? videoUrl : (video_url !== undefined ? video_url : null);
+    const finalSortOrder = sortOrder !== undefined ? sortOrder : (sort_order !== undefined ? sort_order : null);
+    const finalDurationMinutes = durationMinutes !== undefined ? durationMinutes : (duration_minutes !== undefined ? duration_minutes : null);
+
     const res = await query(
       `UPDATE lessons
-       SET title = $1, slug = $2, description = $3, content = $4, video_url = $5, sort_order = $6, duration_minutes = $7, updated_at = CURRENT_TIMESTAMP
+       SET title = COALESCE($1, title),
+           slug = COALESCE($2, slug),
+           description = COALESCE($3, description),
+           content = COALESCE($4, content),
+           video_url = COALESCE($5, video_url),
+           sort_order = COALESCE($6, sort_order),
+           duration_minutes = COALESCE($7, duration_minutes),
+           updated_at = CURRENT_TIMESTAMP
        WHERE id = $8
        RETURNING *`,
-      [title, slug, description, content, videoUrl, sortOrder, durationMinutes, id]
+      [
+        title || null,
+        slug || null,
+        description !== undefined ? description : null,
+        content !== undefined ? content : null,
+        finalVideoUrl,
+        finalSortOrder,
+        finalDurationMinutes,
+        id
+      ]
     );
     return res.rows[0];
   },

@@ -1,0 +1,38 @@
+# Dependencies & Version Control
+node_modules
+.git
+.github
+.gitignore
+.dockerignore
+
+# Environment Files & Secrets
+.env
+.env.*
+!.env.example
+
+# Logs & Runtime Artefacts
+logs/*
+!logs/.gitkeep
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Test Suites & Reports
+test-*.js
+coverage
+.nyc_output
+
+# User Uploads (mounted via volume in production)
+uploads/*
+!uploads/.gitkeep
+
+# IDE & Editor Configs
+.vscode
+.idea
+*.swp
+*.swo
+
+# AI / System Artefacts
+.system_generated
+.gemini
+scratch

@@ -13,12 +13,18 @@ export interface User {
   joinedAt?: string;
 }
 
+export interface AuthResult {
+  success: boolean;
+  message?: string;
+  user?: User;
+}
+
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (emailOrUsername: string, password: string) => Promise<boolean>;
-  register: (data: RegisterData) => Promise<boolean>;
+  register: (data: RegisterData) => Promise<AuthResult>;
   logout: () => void;
   updateUser: (data: Partial<User>) => void;
 }
@@ -97,7 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return false;
   };
 
-  const register = async (data: RegisterData): Promise<boolean> => {
+  const register = async (data: RegisterData): Promise<AuthResult> => {
     setIsLoading(true);
     try {
       // Backend expects role 'user' instead of 'student'
@@ -118,13 +124,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem("da-token", resData.token);
         localStorage.setItem("da-user", JSON.stringify(mappedUser));
         setIsLoading(false);
-        return true;
+        return { success: true, message: resData.message, user: mappedUser };
       }
-    } catch (error) {
+      setIsLoading(false);
+      return { success: false, message: resData.message || "Registration failed" };
+    } catch (error: any) {
       console.error("Registration API error:", error);
+      const safeMessage =
+        error?.response?.data?.message ||
+        (error?.message === "Network Error"
+          ? "Unable to connect to the backend server. Please verify the server is running."
+          : "Registration failed. Please try again.");
+      setIsLoading(false);
+      return { success: false, message: safeMessage };
     }
-    setIsLoading(false);
-    return false;
   };
 
   const logout = () => {

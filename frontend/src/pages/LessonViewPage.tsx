@@ -5,7 +5,7 @@ import {
   CheckCircle2, Play, Zap, Terminal, ArrowRight, ArrowLeft,
   AlertCircle, ExternalLink, Loader2, BookOpen, FileText,
   Code2, Share2, Award, ChevronLeft, ChevronRight, Menu, X, Save,
-  Trophy, Sparkles, RotateCcw
+  Trophy, Sparkles, RotateCcw, Trash2, Cloud, CloudOff
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiService, mapBackendCourseToFrontend } from "@/services/apiService";
@@ -31,6 +31,11 @@ export default function LessonViewPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"curriculum" | "notes">("curriculum");
   const [lessonNote, setLessonNote] = useState("");
+  const [noteLoading, setNoteLoading] = useState(false);
+  const [noteSaving, setNoteSaving] = useState(false);
+  const [noteDeleting, setNoteDeleting] = useState(false);
+  const [noteLastSaved, setNoteLastSaved] = useState<string | null>(null);
+  const [hasRemoteNote, setHasRemoteNote] = useState(false);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
 
   const fetchCourseData = async () => {
@@ -113,13 +118,58 @@ export default function LessonViewPage() {
     }
   }, [lessonQueryId, course]);
 
-  // Update note text & scroll to top when active lesson changes
+  // Fetch note from PostgreSQL API when active lesson changes (fallback to lmsStore)
   useEffect(() => {
-    if (activeLesson) {
-      setLessonNote(lmsStore.getNote(String(activeLesson.id)));
-      scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-    }
-  }, [activeLesson]);
+    let isCancelled = false;
+    if (!activeLesson) return;
+
+    scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+
+    const fetchLessonNote = async () => {
+      const lessonNumericId = Number(activeLesson.id);
+      const isNumeric = !isNaN(lessonNumericId);
+
+      if (user && isNumeric) {
+        setNoteLoading(true);
+        try {
+          const res = await apiService.notes.getLessonNotes(lessonNumericId);
+          if (!isCancelled) {
+            if (res.success && res.data) {
+              setLessonNote(res.data.content || "");
+              setNoteLastSaved(res.data.updated_at || res.data.created_at || null);
+              setHasRemoteNote(true);
+              lmsStore.saveNote(String(activeLesson.id), res.data.content || "");
+              return;
+            } else {
+              // No remote note found, check local draft
+              const localDraft = lmsStore.getNote(String(activeLesson.id)) || "";
+              setLessonNote(localDraft);
+              setHasRemoteNote(false);
+              setNoteLastSaved(null);
+              return;
+            }
+          }
+        } catch (err) {
+          console.error("Failed to load cloud lesson note:", err);
+        } finally {
+          if (!isCancelled) setNoteLoading(false);
+        }
+      }
+
+      if (!isCancelled) {
+        setLessonNote(lmsStore.getNote(String(activeLesson.id)) || "");
+        setHasRemoteNote(false);
+        setNoteLastSaved(null);
+        setNoteLoading(false);
+      }
+    };
+
+    fetchLessonNote();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeLesson?.id, user]);
 
   if (loading) {
     return (
@@ -212,10 +262,66 @@ export default function LessonViewPage() {
     }
   };
 
-  const handleSaveNote = () => {
-    if (activeLesson) {
-      lmsStore.saveNote(String(activeLesson.id), lessonNote);
-      toast.success("Lesson note saved!");
+  const handleSaveNote = async () => {
+    if (!activeLesson) return;
+    const lessonNumericId = Number(activeLesson.id);
+    const isNumeric = !isNaN(lessonNumericId);
+
+    // Save locally first for offline safety
+    lmsStore.saveNote(String(activeLesson.id), lessonNote);
+
+    if (user && isNumeric) {
+      setNoteSaving(true);
+      try {
+        const res = await apiService.notes.saveLessonNotes(lessonNumericId, lessonNote);
+        if (res.success) {
+          toast.success("Note saved to your cloud profile!");
+          setNoteLastSaved(new Date().toISOString());
+          setHasRemoteNote(true);
+        } else {
+          toast.error(res.message || "Failed to sync note to cloud.");
+        }
+      } catch (err: any) {
+        console.error("Error saving note:", err);
+        toast.error(err.response?.data?.message || "Failed to save note to cloud. Kept in local storage.");
+      } finally {
+        setNoteSaving(false);
+      }
+    } else {
+      toast.success("Note saved locally! (Sign in to sync across devices)");
+    }
+  };
+
+  const handleDeleteNote = async () => {
+    if (!activeLesson) return;
+    const lessonNumericId = Number(activeLesson.id);
+    const isNumeric = !isNaN(lessonNumericId);
+
+    if (user && isNumeric && hasRemoteNote) {
+      setNoteDeleting(true);
+      try {
+        const res = await apiService.notes.deleteLessonNotes(lessonNumericId);
+        if (res.success) {
+          setLessonNote("");
+          setHasRemoteNote(false);
+          setNoteLastSaved(null);
+          lmsStore.saveNote(String(activeLesson.id), "");
+          toast.success("Lesson note deleted from cloud.");
+        } else {
+          toast.error(res.message || "Failed to delete cloud note.");
+        }
+      } catch (err: any) {
+        console.error("Error deleting note:", err);
+        toast.error(err.response?.data?.message || "Failed to delete note from cloud.");
+      } finally {
+        setNoteDeleting(false);
+      }
+    } else {
+      lmsStore.saveNote(String(activeLesson.id), "");
+      setLessonNote("");
+      setHasRemoteNote(false);
+      setNoteLastSaved(null);
+      toast.success("Local note cleared.");
     }
   };
 
@@ -482,22 +588,80 @@ export default function LessonViewPage() {
             {/* Tab 2: My Notebook */}
             {activeTab === "notes" && (
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-sm">Personal Notes for: {activeLesson?.title}</h3>
-                  <button
-                    onClick={handleSaveNote}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-all cursor-pointer"
-                  >
-                    <Save className="w-3.5 h-3.5" /> Save Notes
-                  </button>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-border/60">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-semibold text-sm">Personal Notes for: {activeLesson?.title}</h3>
+                      {user ? (
+                        hasRemoteNote ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-green-400 bg-green-500/10 border border-green-500/25 px-2 py-0.5 rounded-full">
+                            <Cloud className="w-3 h-3" /> Cloud Synced
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                            <Cloud className="w-3 h-3" /> PostgreSQL Connected
+                          </span>
+                        )
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-400 bg-amber-500/10 border border-amber-500/25 px-2 py-0.5 rounded-full">
+                          <CloudOff className="w-3 h-3" /> Local Browser Only
+                        </span>
+                      )}
+                    </div>
+                    {noteLastSaved && (
+                      <p className="text-[11px] text-muted-foreground">
+                        Last saved: {new Date(noteLastSaved).toLocaleString()}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 self-end sm:self-auto">
+                    {(lessonNote || hasRemoteNote) && (
+                      <button
+                        onClick={handleDeleteNote}
+                        disabled={noteDeleting || noteLoading}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-destructive/30 text-destructive text-xs font-semibold hover:bg-destructive/10 transition-all cursor-pointer disabled:opacity-50"
+                        title="Delete this note"
+                      >
+                        {noteDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                        <span>Delete</span>
+                      </button>
+                    )}
+
+                    <button
+                      onClick={handleSaveNote}
+                      disabled={noteSaving || noteLoading}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-all cursor-pointer disabled:opacity-50 shadow-sm shadow-primary/20"
+                    >
+                      {noteSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                      <span>{noteSaving ? "Saving..." : "Save Notes"}</span>
+                    </button>
+                  </div>
                 </div>
-                <textarea
-                  value={lessonNote}
-                  onChange={(e) => setLessonNote(e.target.value)}
-                  placeholder="Type your notes, key takeaways, code snippets, or reminders here... (saved locally automatically)"
-                  rows={10}
-                  className="w-full p-4 rounded-2xl border border-border bg-card text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 leading-relaxed font-mono"
-                />
+
+                {!user && (
+                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-between gap-3 text-xs text-amber-300">
+                    <p>💡 You are browsing as guest. Notes are saved locally in this browser.</p>
+                    <Link to="/login" className="underline font-semibold hover:text-amber-200 shrink-0">
+                      Sign In to Sync to Cloud
+                    </Link>
+                  </div>
+                )}
+
+                {noteLoading ? (
+                  <div className="w-full h-48 rounded-2xl border border-border bg-card/50 flex flex-col items-center justify-center gap-2 text-muted-foreground text-xs">
+                    <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                    <span>Loading your lesson notes from PostgreSQL...</span>
+                  </div>
+                ) : (
+                  <textarea
+                    value={lessonNote}
+                    onChange={(e) => setLessonNote(e.target.value)}
+                    placeholder="Type your notes, key takeaways, code snippets, or reminders here... (press Save Notes to persist to PostgreSQL)"
+                    rows={10}
+                    className="w-full p-4 rounded-2xl border border-border bg-card text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 leading-relaxed font-mono"
+                  />
+                )}
               </motion.div>
             )}
           </div>

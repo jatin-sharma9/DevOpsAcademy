@@ -5,105 +5,169 @@ import { Lesson } from '../models/lessonModel.js';
 import { Certificate } from '../models/certificateModel.js';
 import { Notification } from '../models/notificationModel.js';
 import { emailService } from '../services/emailService.js';
-import { query } from '../config/db.js';
 
+/**
+ * Enroll active student in a course
+ * POST /api/enrollments
+ */
 export const enrollCourse = async (req, res) => {
   try {
-    const { courseId } = req.body;
-    if (!courseId) return res.status(400).json({ message: 'Course ID is required' });
+    const { courseId: rawCourseId } = req.body;
+    const courseId = parseInt(rawCourseId, 10);
+
+    if (isNaN(courseId) || courseId <= 0) {
+      return res.status(400).json({ success: false, message: 'Valid numeric Course ID is required' });
+    }
 
     const course = await Course.findById(courseId);
-    if (!course) return res.status(404).json({ message: 'Course not found' });
+    if (!course) {
+      return res.status(404).json({ success: false, message: 'Course not found' });
+    }
 
     const enrollment = await Enrollment.enroll(req.user.id, courseId);
 
-    // Send email notification to admin (non-blocking)
-    emailService.sendEnrollmentNotification({
+    // Send email notification to admin & welcome email to student (non-blocking)
+    emailService.sendEnrollmentEmails({
       studentName: req.user.username,
       studentEmail: req.user.email,
-      courseTitle: course.title
+      courseTitle: course.title,
+      courseSlug: course.slug,
     });
 
     // Save dashboard notification for admin
     await Notification.create({
       title: 'New Course Enrollment',
       message: `${req.user.username} (${req.user.email}) enrolled in "${course.title}"`,
-      type: 'enrollment'
+      type: 'enrollment',
     });
 
-    res.status(201).json({ success: true, data: enrollment });
+    res.status(201).json({ success: true, message: 'Successfully enrolled in course', data: enrollment });
   } catch (error) {
     console.error('Enroll error:', error);
-    res.status(500).json({ message: 'Error enrolling in course' });
+    res.status(500).json({ success: false, message: 'Error enrolling in course' });
   }
 };
 
+/**
+ * Get active student's enrollments
+ * GET /api/enrollments/my
+ */
 export const getMyEnrollments = async (req, res) => {
   try {
     const enrollments = await Enrollment.findByUserId(req.user.id);
-    res.status(200).json({ success: true, data: enrollments });
+    res.status(200).json({ success: true, count: enrollments.length, data: enrollments });
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching enrollments' });
+    console.error('Get my enrollments error:', error);
+    res.status(500).json({ success: false, message: 'Error fetching enrollments' });
   }
 };
 
+/**
+ * Update course progress (strictly bounded by verified lesson completions)
+ * PUT /api/enrollments/progress
+ */
 export const updateProgress = async (req, res) => {
   try {
-    const { courseId, progress } = req.body;
-    if (!courseId || progress === undefined) {
-      return res.status(400).json({ message: 'Course ID and progress are required' });
+    const { courseId: rawCourseId, progress: rawProgress } = req.body;
+    const courseId = parseInt(rawCourseId, 10);
+    const progress = parseInt(rawProgress, 10);
+
+    if (isNaN(courseId) || isNaN(progress)) {
+      return res.status(400).json({ success: false, message: 'Course ID and numeric progress are required' });
     }
 
-    const updated = await Enrollment.updateProgress(req.user.id, courseId, progress);
+    const course = await Course.findById(courseId);
+    if (!course) {
+      return res.status(404).json({ success: false, message: 'Course not found' });
+    }
+
+    const boundedProgress = Math.max(0, Math.min(100, progress));
+
+    // Verify against actual database lesson completions
+    const lessons = await Lesson.findAllByCourseId(courseId);
+    const completedLessons = await Lesson.getCompletedLessons(req.user.id, courseId);
+    const totalLessons = lessons.length;
+    const completedCount = completedLessons.length;
+    const verifiedProgress = totalLessons > 0 ? Math.min(100, Math.round((completedCount / totalLessons) * 100)) : 0;
+
+    // Disallow marking a course complete (or setting 100% progress) without completing all lessons
+    if (boundedProgress >= 100 && (totalLessons === 0 || completedCount < totalLessons)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot mark course as completed without verified lesson completion. Complete all course lessons first.',
+        verifiedProgress,
+        completedCount,
+        totalLessons,
+      });
+    }
+
+    // Ensure client-reported progress cannot exceed verified lesson progress when lessons exist
+    const finalProgress = totalLessons > 0 ? Math.min(boundedProgress, verifiedProgress) : 0;
+
+    const updated = await Enrollment.updateProgress(req.user.id, courseId, finalProgress);
+    if (!updated) {
+      return res.status(404).json({ success: false, message: 'Enrollment not found' });
+    }
+
     res.status(200).json({ success: true, data: updated });
   } catch (error) {
-    res.status(500).json({ message: 'Error updating course progress' });
+    console.error('Update progress error:', error);
+    res.status(500).json({ success: false, message: 'Error updating course progress' });
   }
 };
 
+/**
+ * Get all enrollments across platform (Admin only)
+ * GET /api/enrollments
+ */
 export const getAllEnrollments = async (req, res) => {
   try {
     const enrollments = await Enrollment.findAll();
     res.status(200).json({ success: true, count: enrollments.length, data: enrollments });
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching all enrollments' });
+    console.error('Get all enrollments error:', error);
+    res.status(500).json({ success: false, message: 'Error fetching all enrollments' });
   }
 };
 
 /**
- * Mark a lesson as complete and recalculate progress
+ * Mark a lesson as complete and recalculate actual server-side progress
+ * POST /api/enrollments/lessons/complete
  */
 export const markLessonComplete = async (req, res) => {
   try {
-    const { courseId, lessonId } = req.body;
-    if (!courseId || !lessonId) {
-      return res.status(400).json({ message: 'Course ID and Lesson ID are required' });
+    const { courseId: rawCourseId, lessonId: rawLessonId } = req.body;
+    const courseId = parseInt(rawCourseId, 10);
+    const lessonId = parseInt(rawLessonId, 10);
+
+    if (isNaN(courseId) || isNaN(lessonId)) {
+      return res.status(400).json({ success: false, message: 'Valid Course ID and Lesson ID are required' });
     }
 
-    // Check if enrolled, auto-enroll if not
+    // Auto-enroll student if not enrolled yet
     const enrollments = await Enrollment.findByUserId(req.user.id);
-    const isEnrolled = enrollments.some(e => e.course_id === parseInt(courseId, 10));
+    const isEnrolled = enrollments.some(e => e.course_id === courseId);
     if (!isEnrolled) {
       await Enrollment.enroll(req.user.id, courseId);
     }
 
-    // Mark complete
+    // Mark completion in database
     await Lesson.markComplete(req.user.id, lessonId);
 
-    // Recalculate progress
+    // Recalculate true lesson-based progress
     const lessons = await Lesson.findAllByCourseId(courseId);
     const completedLessons = await Lesson.getCompletedLessons(req.user.id, courseId);
-    
+
     const totalLessons = lessons.length;
     const completedCount = completedLessons.length;
     const progress = totalLessons > 0 ? Math.min(100, Math.round((completedCount / totalLessons) * 100)) : 0;
 
-    // Update enrollment
+    // Update enrollment status
     const updatedEnrollment = await Enrollment.updateProgress(req.user.id, courseId, progress);
 
-    // Generate certificate if 100% complete
+    // Generate cryptographic certificate if 100% complete
     let certificate = null;
-    if (progress === 100) {
+    if (progress === 100 && totalLessons > 0) {
       const existingCert = await Certificate.findByUserAndCourse(req.user.id, courseId);
       if (!existingCert) {
         const hash = crypto.randomBytes(16).toString('hex');
@@ -120,44 +184,39 @@ export const markLessonComplete = async (req, res) => {
         completedCount,
         totalLessons,
         progress,
-        certificate
-      }
+        certificate,
+      },
     });
   } catch (error) {
     console.error('Mark lesson complete error:', error);
-    res.status(500).json({ message: 'Error marking lesson as complete' });
+    res.status(500).json({ success: false, message: 'Error marking lesson as complete' });
   }
 };
 
 /**
  * Mark a lesson as incomplete and recalculate progress
+ * POST /api/enrollments/lessons/incomplete
  */
 export const markLessonIncomplete = async (req, res) => {
   try {
-    const { courseId, lessonId } = req.body;
-    if (!courseId || !lessonId) {
-      return res.status(400).json({ message: 'Course ID and Lesson ID are required' });
+    const { courseId: rawCourseId, lessonId: rawLessonId } = req.body;
+    const courseId = parseInt(rawCourseId, 10);
+    const lessonId = parseInt(rawLessonId, 10);
+
+    if (isNaN(courseId) || isNaN(lessonId)) {
+      return res.status(400).json({ success: false, message: 'Valid Course ID and Lesson ID are required' });
     }
 
-    // Check if enrolled, auto-enroll if not
-    const enrollments = await Enrollment.findByUserId(req.user.id);
-    const isEnrolled = enrollments.some(e => e.course_id === parseInt(courseId, 10));
-    if (!isEnrolled) {
-      await Enrollment.enroll(req.user.id, courseId);
-    }
-
-    // Mark incomplete
     await Lesson.markIncomplete(req.user.id, lessonId);
 
     // Recalculate progress
     const lessons = await Lesson.findAllByCourseId(courseId);
     const completedLessons = await Lesson.getCompletedLessons(req.user.id, courseId);
-    
+
     const totalLessons = lessons.length;
     const completedCount = completedLessons.length;
     const progress = totalLessons > 0 ? Math.min(100, Math.round((completedCount / totalLessons) * 100)) : 0;
 
-    // Update enrollment
     const updatedEnrollment = await Enrollment.updateProgress(req.user.id, courseId, progress);
 
     res.status(200).json({
@@ -166,79 +225,115 @@ export const markLessonIncomplete = async (req, res) => {
         enrollment: updatedEnrollment,
         completedCount,
         totalLessons,
-        progress
-      }
+        progress,
+      },
     });
   } catch (error) {
     console.error('Mark lesson incomplete error:', error);
-    res.status(500).json({ message: 'Error marking lesson as incomplete' });
+    res.status(500).json({ success: false, message: 'Error marking lesson as incomplete' });
   }
 };
 
 /**
- * Get completed lessons and progress for a course
+ * Get detailed course progress for user
+ * GET /api/enrollments/courses/:courseId/progress
  */
 export const getCourseProgress = async (req, res) => {
   try {
-    const { courseId } = req.params;
-    
-    const completedLessons = await Lesson.getCompletedLessons(req.user.id, courseId);
-    const lessons = await Lesson.findAllByCourseId(courseId);
-    
-    // Find enrollment
-    const enrollmentRes = await query(
-      'SELECT * FROM enrollments WHERE user_id = $1 AND course_id = $2',
-      [req.user.id, courseId]
-    );
-    const enrollment = enrollmentRes.rows[0];
+    const courseId = parseInt(req.params.courseId, 10);
+    if (isNaN(courseId)) {
+      return res.status(400).json({ success: false, message: 'Invalid course ID' });
+    }
 
-    // Certificate
+    const lessons = await Lesson.findAllByCourseId(courseId);
+    const completedLessons = await Lesson.getCompletedLessons(req.user.id, courseId);
+
+    const totalLessons = lessons.length;
+    const completedCount = completedLessons.length;
+    const progress = totalLessons > 0 ? Math.min(100, Math.round((completedCount / totalLessons) * 100)) : 0;
+
     const certificate = await Certificate.findByUserAndCourse(req.user.id, courseId);
 
     res.status(200).json({
       success: true,
       data: {
-        isEnrolled: !!enrollment,
-        progress: enrollment ? enrollment.progress : 0,
-        completedLessons: completedLessons.map(cl => cl.lesson_id),
-        totalLessons: lessons.length,
-        certificate
-      }
+        courseId,
+        totalLessons,
+        completedCount,
+        progress,
+        completedLessonIds: completedLessons.map(l => l.lesson_id),
+        certificate,
+      },
     });
   } catch (error) {
     console.error('Get progress error:', error);
-    res.status(500).json({ message: 'Error fetching progress details' });
+    res.status(500).json({ success: false, message: 'Error fetching progress details' });
   }
 };
 
 /**
- * Get user certificate by course
+ * Get user certificate for a course
+ * GET /api/enrollments/courses/:courseId/certificate
  */
 export const getCertificate = async (req, res) => {
   try {
-    const { courseId } = req.params;
+    const courseId = parseInt(req.params.courseId, 10);
+    if (isNaN(courseId)) {
+      return res.status(400).json({ success: false, message: 'Invalid course ID' });
+    }
+
     const certificate = await Certificate.findByUserAndCourse(req.user.id, courseId);
     if (!certificate) {
-      return res.status(404).json({ message: 'Certificate not found' });
+      return res.status(404).json({ success: false, message: 'Certificate not found. Complete 100% of course lessons first.' });
     }
+
     res.status(200).json({ success: true, data: certificate });
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching certificate' });
+    console.error('Get certificate error:', error);
+    res.status(500).json({ success: false, message: 'Error fetching certificate' });
   }
 };
 
 /**
- * Verify a certificate hash
+ * Public certificate verification
+ * GET /api/enrollments/certificates/verify/:hash
  */
 export const verifyCertificate = async (req, res) => {
   try {
     const { hash } = req.params;
-    const certificate = await Certificate.findByHash(hash);
-    if (!certificate) {
-      return res.status(404).json({ message: 'Invalid certificate verification code' });
+
+    // Validate hash format (supports hexadecimal hashes, DEV- prefix hashes, or alphanumeric codes)
+    if (!hash || !/^[a-zA-Z0-9_-]{6,64}$/.test(hash.trim())) {
+      return res.status(400).json({
+        success: false,
+        verified: false,
+        message: 'Invalid certificate hash format. Expected valid alphanumeric certificate verification code.',
+      });
     }
-    res.status(200).json({ success: true, verified: true, data: certificate });
+
+    const certificate = await Certificate.findByHash(hash.trim());
+    if (!certificate) {
+      return res.status(404).json({
+        success: false,
+        verified: false,
+        message: 'Invalid or unrecognized certificate verification code.',
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      verified: true,
+      message: 'Certificate successfully verified.',
+      data: {
+        certificateHash: certificate.certificate_hash,
+        studentName: certificate.username,
+        courseTitle: certificate.course_title,
+        courseSlug: certificate.course_slug,
+        issuedAt: certificate.issued_at,
+      },
+    });
   } catch (error) {
-    res.status(500).json({ message: 'Error verifying certificate' });
+    console.error('Verify certificate error:', error);
+    res.status(500).json({ success: false, verified: false, message: 'Error verifying certificate' });
   }
 };

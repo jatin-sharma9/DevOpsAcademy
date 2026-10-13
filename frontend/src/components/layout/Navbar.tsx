@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 const NAV_LINKS = [
   { label: "Portfolio", href: "/portfolio" },
   { label: "Courses", href: "/courses" },
+  { label: "Missions", href: "/missions" },
   { label: "Interview Prep", href: "/interview-prep" },
   { label: "Tracker", href: "/tracker" },
   { label: "Blog", href: "/blog" },

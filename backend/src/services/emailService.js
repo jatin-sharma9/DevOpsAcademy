@@ -1,122 +1,386 @@
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
+import { query } from '../config/db.js';
+import {
+  contactFormTemplates,
+  enrollmentTemplates,
+  welcomeEmailTemplate,
+  passwordResetTemplate,
+  testEmailTemplate,
+} from './emailTemplates.js';
 
 dotenv.config();
 
-// Create transporter
-const createTransporter = () => {
-  // If SMTP configurations are not fully set, we will return a mock transporter
-  const hasSmtpConfig =
-    process.env.SMTP_HOST &&
-    process.env.SMTP_PORT &&
-    process.env.SMTP_USER &&
-    process.env.SMTP_PASS;
+/**
+ * Configure Nodemailer Transporter
+ * Supports Gmail SMTP and standard custom SMTP providers
+ */
+const getSmtpConfig = () => {
+  const isGmail =
+    process.env.SMTP_SERVICE?.toLowerCase() === 'gmail' ||
+    (process.env.SMTP_HOST && process.env.SMTP_HOST.includes('gmail')) ||
+    (!process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_USER.includes('@gmail.com'));
 
-  if (!hasSmtpConfig) {
-    console.warn('⚠️ SMTP settings not fully configured in .env. Email Service is running in MOCK mode (logging to console).');
-    return {
-      sendMail: async (mailOptions) => {
-        console.log('\n--- 📧 MOCK EMAIL SENT ---');
-        console.log(`From: ${mailOptions.from}`);
-        console.log(`To: ${mailOptions.to}`);
-        console.log(`Subject: ${mailOptions.subject}`);
-        console.log('Body (Text):', mailOptions.text);
-        console.log('Body (HTML):', mailOptions.html);
-        console.log('--------------------------\n');
-        return { messageId: 'mock-id-' + Date.now() };
-      }
-    };
-  }
+  const host = process.env.SMTP_HOST || (isGmail ? 'smtp.gmail.com' : 'localhost');
+  const port = parseInt(process.env.SMTP_PORT || (isGmail ? '465' : '587'), 10);
+  const secure = process.env.SMTP_SECURE === 'true' || port === 465;
+  const user = process.env.SMTP_USER || '';
+  const pass = process.env.SMTP_PASS || '';
 
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT, 10),
-    secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
+  const hasCredentials = Boolean(user && pass);
+
+  return {
+    isGmail,
+    host,
+    port,
+    secure,
+    user,
+    pass,
+    hasCredentials,
+    service: isGmail ? 'gmail' : undefined,
+  };
 };
 
-const transporter = createTransporter();
-const adminEmail = process.env.ADMIN_EMAIL || 'jatinsharma932002@gmail.com';
-const fromEmail = process.env.EMAIL_FROM || 'noreply@devopsacademy.com';
+// Global transporter singleton & state
+let transporterInstance = null;
+let isMockTransporter = false;
+
+const initTransporter = () => {
+  const config = getSmtpConfig();
+
+  if (!config.hasCredentials) {
+    isMockTransporter = true;
+    console.warn('⚠️  [EmailService] SMTP credentials not detected in .env. Running in MOCK / Console simulation mode.');
+
+    transporterInstance = {
+      sendMail: async (mailOptions) => {
+        const messageId = `mock-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+        console.log('\n================== 📧 MOCK EMAIL DISPATCH ==================');
+        console.log(`🆔 Message ID : ${messageId}`);
+        console.log(`📤 From       : ${mailOptions.from}`);
+        console.log(`📥 To         : ${mailOptions.to}`);
+        console.log(`📋 Subject    : ${mailOptions.subject}`);
+        console.log(`⏰ Timestamp  : ${new Date().toISOString()}`);
+        console.log('--- Body Preview ---');
+        console.log(mailOptions.text ? mailOptions.text.slice(0, 300) : '(HTML Only Content)');
+        console.log('===========================================================\n');
+        return { messageId, accepted: [mailOptions.to], rejected: [] };
+      },
+      verify: async () => true,
+    };
+    return transporterInstance;
+  }
+
+  isMockTransporter = false;
+
+  const transportOptions = config.isGmail
+    ? {
+        service: 'gmail',
+        auth: {
+          user: config.user,
+          pass: config.pass,
+        },
+      }
+    : {
+        host: config.host,
+        port: config.port,
+        secure: config.secure,
+        auth: {
+          user: config.user,
+          pass: config.pass,
+        },
+        tls: {
+          rejectUnauthorized: process.env.NODE_ENV === 'production',
+        },
+      };
+
+  transporterInstance = nodemailer.createTransport(transportOptions);
+  console.log(`📧 [EmailService] Configured Nodemailer with ${config.isGmail ? 'Gmail SMTP' : `${config.host}:${config.port}`}`);
+
+  return transporterInstance;
+};
+
+// Initialize transporter on load
+initTransporter();
+
+/**
+ * Log email dispatch in PostgreSQL database
+ */
+const logEmailToDatabase = async ({ type, recipient, subject, status, error = null, payload = {} }) => {
+  try {
+    await query(
+      `INSERT INTO email_logs (type, recipient, subject, payload, status, error)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        type || 'general',
+        recipient,
+        subject,
+        JSON.stringify(payload),
+        status,
+        error ? String(error) : null,
+      ]
+    );
+  } catch (err) {
+    // Non-fatal logging error
+    console.error('Failed to write email log to database:', err.message);
+  }
+};
 
 export const emailService = {
   /**
-   * Send a general email
+   * Re-initialize or reload transporter (useful after updating .env or settings)
    */
-  async sendEmail({ to, subject, text, html }) {
+  reloadTransporter() {
+    return initTransporter();
+  },
+
+  /**
+   * Verify SMTP transporter connection
+   */
+  async verifyConnection() {
+    const config = getSmtpConfig();
+    if (isMockTransporter) {
+      return {
+        configured: false,
+        verified: true,
+        isMock: true,
+        message: 'Email service running in Mock/Development mode (no credentials provided in .env).',
+      };
+    }
+
     try {
-      const info = await transporter.sendMail({
-        from: `DevOps Academy <${fromEmail}>`,
+      await transporterInstance.verify();
+      return {
+        configured: true,
+        verified: true,
+        isMock: false,
+        message: `Successfully connected to ${config.isGmail ? 'Gmail SMTP' : config.host}.`,
+      };
+    } catch (err) {
+      console.error('❌ [EmailService] SMTP Connection verification failed:', err.message);
+      return {
+        configured: true,
+        verified: false,
+        isMock: false,
+        error: err.message,
+        message: 'Failed to authenticate with SMTP server. Verify your SMTP_USER and SMTP_PASS (Gmail App Password).',
+      };
+    }
+  },
+
+  /**
+   * Get current email service status & configuration overview
+   */
+  getStatus() {
+    const config = getSmtpConfig();
+    return {
+      configured: config.hasCredentials,
+      isMock: isMockTransporter,
+      provider: config.isGmail ? 'Gmail' : config.host,
+      host: config.host,
+      port: config.port,
+      secure: config.secure,
+      user: config.user ? config.user.replace(/(.{2})(.*)(@.*)/, '$1***$3') : null,
+      adminEmail: process.env.ADMIN_EMAIL || 'jatinsharma932002@gmail.com',
+      fromEmail: process.env.EMAIL_FROM || 'noreply@devopsacademy.com',
+    };
+  },
+
+  /**
+   * Core sendEmail function
+   * 
+   * @param {Object} options
+   * @param {string} options.to - Recipient email address
+   * @param {string} options.subject - Email subject line
+   * @param {string} [options.text] - Plain text body
+   * @param {string} [options.html] - HTML body
+   * @param {string} [options.type] - Category/type for logging
+   * @param {Object} [options.payload] - Metadata to persist in email_logs
+   * @returns {Promise<Object>} Result envelope with success status and messageId
+   */
+  async sendEmail({ to, subject, text, html, type = 'general', payload = {} }) {
+    if (!to) {
+      console.error('❌ [EmailService] Recipient "to" address is required.');
+      return { success: false, error: 'Recipient email address is required' };
+    }
+
+    const fromAddress = process.env.EMAIL_FROM || `"DevOps Academy" <noreply@devopsacademy.com>`;
+
+    try {
+      const info = await transporterInstance.sendMail({
+        from: fromAddress,
         to,
         subject,
         text,
         html,
       });
-      console.log(`✉️ Email sent successfully: ${info.messageId}`);
-      return info;
+
+      console.log(`✉️  [EmailService] Email sent successfully to ${to} (ID: ${info.messageId})`);
+
+      await logEmailToDatabase({
+        type,
+        recipient: to,
+        subject,
+        status: 'success',
+        payload: { ...payload, messageId: info.messageId, isMock: isMockTransporter },
+      });
+
+      return {
+        success: true,
+        messageId: info.messageId,
+        to,
+        subject,
+        type,
+        isMock: isMockTransporter,
+      };
     } catch (error) {
-      console.error('❌ Failed to send email:', error);
-      // Don't throw to avoid breaking the main request thread
-      return null;
+      console.error(`❌ [EmailService] Failed to send email to ${to}:`, error.message);
+
+      await logEmailToDatabase({
+        type,
+        recipient: to,
+        subject,
+        status: 'failure',
+        error: error.message,
+        payload,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        to,
+        subject,
+      };
     }
   },
 
   /**
-   * Send new contact message notification to Admin
+   * 1. Contact Form: Sends admin notification & user receipt confirmation
    */
-  async sendContactNotification(contactData) {
-    const { name, email, subject, message } = contactData;
-    const emailSubject = `[DevOps Academy] New Contact Message: ${subject}`;
-    const text = `You have received a new contact message from ${name} (${email}):\n\nSubject: ${subject}\n\nMessage:\n${message}`;
-    const html = `
-      <div style="font-family: sans-serif; padding: 20px; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 10px;">
-        <h2 style="color: #6366f1; border-bottom: 2px solid #f3f4f6; padding-bottom: 10px;">New Contact Inquiry</h2>
-        <p><strong>Name:</strong> ${name}</p>
-        <p><strong>Email:</strong> <a href="mailto:${email}">${email}</a></p>
-        <p><strong>Subject:</strong> ${subject}</p>
-        <div style="background-color: #f9fafb; padding: 15px; border-radius: 5px; border-left: 4px solid #6366f1; margin: 15px 0;">
-          <p style="white-space: pre-wrap; margin: 0;">${message}</p>
-        </div>
-        <p style="font-size: 12px; color: #9ca3af; margin-top: 20px;">This is an automated notification from DevOps Academy backend.</p>
-      </div>
-    `;
+  async sendContactEmails({ name, email, subject, message }) {
+    const adminEmail = process.env.ADMIN_EMAIL || 'jatinsharma932002@gmail.com';
 
-    return this.sendEmail({ to: adminEmail, subject: emailSubject, text, html });
+    // 1. Notify Admin
+    const adminTpl = contactFormTemplates.adminNotification({ name, email, subject, message });
+    const adminResult = await this.sendEmail({
+      to: adminEmail,
+      subject: adminTpl.subject,
+      html: adminTpl.html,
+      text: adminTpl.text,
+      type: 'contact_admin_notification',
+      payload: { name, email, subject },
+    });
+
+    // 2. Send Confirmation to User
+    const userTpl = contactFormTemplates.userConfirmation({ name, subject, message });
+    const userResult = await this.sendEmail({
+      to: email,
+      subject: userTpl.subject,
+      html: userTpl.html,
+      text: userTpl.text,
+      type: 'contact_user_confirmation',
+      payload: { name, subject },
+    });
+
+    return { adminResult, userResult };
+  },
+
+  // Retain legacy method for backward compatibility
+  async sendContactNotification(contactData) {
+    return this.sendContactEmails(contactData);
   },
 
   /**
-   * Send new enrollment notification to Admin
+   * 2. Course Enrollment: Sends congratulations to student & notification to admin
    */
-  async sendEnrollmentNotification(enrollmentData) {
-    const { studentName, studentEmail, courseTitle } = enrollmentData;
-    const emailSubject = `[DevOps Academy] New Student Enrollment: ${courseTitle}`;
-    const text = `New Enrollment Notification:\n\nStudent Name: ${studentName}\nEmail: ${studentEmail}\nEnrolled Course: ${courseTitle}`;
-    const html = `
-      <div style="font-family: sans-serif; padding: 20px; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 10px;">
-        <h2 style="color: #10b981; border-bottom: 2px solid #f3f4f6; padding-bottom: 10px;">🎉 New Course Enrollment!</h2>
-        <p>A student has just enrolled in a course on DevOps Academy.</p>
-        <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
-          <tr style="background-color: #f9fafb;">
-            <td style="padding: 10px; font-weight: bold; border-bottom: 1px solid #e5e7eb;">Student Name:</td>
-            <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">${studentName}</td>
-          </tr>
-          <tr>
-            <td style="padding: 10px; font-weight: bold; border-bottom: 1px solid #e5e7eb;">Email Address:</td>
-            <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;"><a href="mailto:${studentEmail}">${studentEmail}</a></td>
-          </tr>
-          <tr style="background-color: #f9fafb;">
-            <td style="padding: 10px; font-weight: bold; border-bottom: 1px solid #e5e7eb;">Course Title:</td>
-            <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; color: #6366f1; font-weight: bold;">${courseTitle}</td>
-          </tr>
-        </table>
-        <p style="font-size: 12px; color: #9ca3af; margin-top: 20px;">This is an automated notification from DevOps Academy backend.</p>
-      </div>
-    `;
+  async sendEnrollmentEmails({ studentName, studentEmail, courseTitle, courseSlug = '' }) {
+    const adminEmail = process.env.ADMIN_EMAIL || 'jatinsharma932002@gmail.com';
 
-    return this.sendEmail({ to: adminEmail, subject: emailSubject, text, html });
-  }
+    // 1. Send confirmation to student
+    const studentTpl = enrollmentTemplates.studentWelcome({ studentName, courseTitle, courseSlug });
+    const studentResult = await this.sendEmail({
+      to: studentEmail,
+      subject: studentTpl.subject,
+      html: studentTpl.html,
+      text: studentTpl.text,
+      type: 'enrollment_student',
+      payload: { studentName, courseTitle, courseSlug },
+    });
+
+    // 2. Send notification to admin
+    const adminTpl = enrollmentTemplates.adminNotification({ studentName, studentEmail, courseTitle });
+    const adminResult = await this.sendEmail({
+      to: adminEmail,
+      subject: adminTpl.subject,
+      html: adminTpl.html,
+      text: adminTpl.text,
+      type: 'enrollment_admin',
+      payload: { studentName, studentEmail, courseTitle },
+    });
+
+    return { studentResult, adminResult };
+  },
+
+  // Retain legacy method for backward compatibility
+  async sendEnrollmentNotification(enrollmentData) {
+    return this.sendEnrollmentEmails(enrollmentData);
+  },
+
+  /**
+   * 3. Welcome Email: Sent to newly registered users
+   */
+  async sendWelcomeEmail({ username, email }) {
+    const tpl = welcomeEmailTemplate({ username, email });
+    return this.sendEmail({
+      to: email,
+      subject: tpl.subject,
+      html: tpl.html,
+      text: tpl.text,
+      type: 'welcome_registration',
+      payload: { username, email },
+    });
+  },
+
+  /**
+   * 4. Password Reset: Sends secure reset link and instructions
+   */
+  async sendPasswordResetEmail({ email, username = '', resetToken, resetUrl, expiresMinutes = 30 }) {
+    const finalUrl = resetUrl || `http://localhost:5200/reset-password?token=${resetToken}`;
+    const tpl = passwordResetTemplate({ username, resetUrl: finalUrl, resetToken, expiresMinutes });
+
+    return this.sendEmail({
+      to: email,
+      subject: tpl.subject,
+      html: tpl.html,
+      text: tpl.text,
+      type: 'password_reset',
+      payload: { email, username, expiresMinutes },
+    });
+  },
+
+  /**
+   * 5. Test Email: Sends diagnostic verification email
+   */
+  async sendTestEmail({ to }) {
+    const recipient = to || process.env.ADMIN_EMAIL || 'jatinsharma932002@gmail.com';
+    const config = getSmtpConfig();
+    const smtpInfo = {
+      provider: config.isGmail ? 'Gmail SMTP' : `${config.host}:${config.port}`,
+      host: config.host,
+      port: config.port,
+      secure: config.secure,
+      isMock: isMockTransporter,
+    };
+
+    const tpl = testEmailTemplate({ to: recipient, smtpInfo });
+
+    return this.sendEmail({
+      to: recipient,
+      subject: tpl.subject,
+      html: tpl.html,
+      text: tpl.text,
+      type: 'smtp_test',
+      payload: smtpInfo,
+    });
+  },
 };

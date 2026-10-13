@@ -39,34 +39,52 @@ export default function CertificatePage() {
         if (resolvedCourse) {
           setCourse(resolvedCourse);
 
-          // Try fetching certificate from backend
-          let certFound = false;
-          try {
-            const certRes = await apiService.enrollments.getCertificate(Number(resolvedCourse.id));
-            if (certRes.success && certRes.data) {
-              setCertificate(certRes.data);
-              certFound = true;
+          // Try fetching verified certificate from backend
+          if (resolvedCourse.id) {
+            try {
+              const certRes = await apiService.enrollments.getCertificate(Number(resolvedCourse.id));
+              if (certRes.success && certRes.data) {
+                setCertificate(certRes.data);
+                lmsStore.unlockBadge('certified_pro');
+                return;
+              }
+            } catch {
+              // Not yet issued or backend unavailable
             }
-          } catch {
-            // Backend offline
-          }
-
-          // If no backend certificate found, generate a client verifiable certificate
-          if (!certFound) {
-            // Generate deterministic certificate hash from username & course
-            const hash = `DEV-${resolvedCourse.slug.substring(0, 4).toUpperCase()}-${Math.abs((user?.username || "student").split("").reduce((a, b) => ((a << 5) - a) + b.charCodeAt(0), 0)).toString(16).toUpperCase().padStart(6, '0')}`;
-            setCertificate({
-              id: 1,
-              user_id: user?.id || 1,
-              course_id: resolvedCourse.id,
-              certificate_hash: hash,
-              issued_at: new Date().toISOString(),
-            });
-            lmsStore.unlockBadge('certified_pro');
           }
         }
+
+        // Check if `id` is a verified certificate verification code/hash
+        try {
+          const verifyRes = await apiService.enrollments.verifyCertificate(id);
+          if (verifyRes.success && verifyRes.data && verifyRes.verified) {
+            setCertificate({
+              certificate_hash: verifyRes.data.certificateHash,
+              username: verifyRes.data.studentName,
+              course_title: verifyRes.data.courseTitle,
+              issued_at: verifyRes.data.issuedAt,
+            });
+            if (!resolvedCourse && verifyRes.data.courseSlug) {
+              const staticCourse = COURSES.find(c => c.slug === verifyRes.data.courseSlug);
+              setCourse(staticCourse || {
+                title: verifyRes.data.courseTitle,
+                slug: verifyRes.data.courseSlug,
+                category: "DevOps",
+                level: "Professional",
+                durationHours: 12,
+              });
+            }
+            return;
+          }
+        } catch {
+          // Unverified or invalid hash
+        }
+
+        // Do not generate synthetic certificate
+        setCertificate(null);
       } catch (err) {
         console.error("Error loading certificate:", err);
+        setCertificate(null);
       } finally {
         setLoading(false);
       }
@@ -85,15 +103,45 @@ export default function CertificatePage() {
 
   if (!course || !certificate) {
     return (
-      <div className="flex items-center justify-center h-[60vh]">
-        <div className="text-center space-y-3">
-          <h2 className="text-2xl font-bold font-display">Certificate Incomplete</h2>
-          <p className="text-muted-foreground text-sm max-w-sm mx-auto">
-            Please complete all course lessons and assessments to unlock your verified credential.
-          </p>
-          <div className="flex items-center justify-center gap-3 pt-2">
-            <Link to="/dashboard" className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold">
-              Go to Dashboard
+      <div className="max-w-2xl mx-auto px-4 py-20">
+        <div className="rounded-3xl border border-border bg-card p-8 sm:p-12 text-center space-y-6 shadow-xl">
+          <div className="mx-auto w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shadow-md">
+            <Award className="w-8 h-8" />
+          </div>
+
+          <div className="space-y-2">
+            <span className="px-3 py-1 rounded-full text-xs font-mono font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 inline-block">
+              CERTIFICATE UNAVAILABLE // UNVERIFIED
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-bold font-display text-foreground">
+              Verified Certificate Not Available
+            </h2>
+            <p className="text-muted-foreground text-sm max-w-md mx-auto leading-relaxed">
+              No authenticated certificate credential was found for this course or verification ID.
+              Certificates are only issued after completing 100% of required course lessons and passing assessments.
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+            {course?.slug ? (
+              <Link
+                to={`/learn/${course.slug}`}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-all flex items-center justify-center gap-2 shadow-md shadow-primary/20"
+              >
+                <Terminal className="w-3.5 h-3.5" /> Continue Course Lessons
+              </Link>
+            ) : null}
+            <Link
+              to="/dashboard"
+              className="w-full sm:w-auto px-5 py-2.5 rounded-xl border border-border hover:bg-muted text-xs font-semibold text-foreground transition-all flex items-center justify-center gap-2"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" /> Return to Dashboard
+            </Link>
+            <Link
+              to="/courses"
+              className="w-full sm:w-auto px-5 py-2.5 rounded-xl border border-border hover:bg-muted text-xs font-medium text-muted-foreground hover:text-foreground transition-all flex items-center justify-center gap-2"
+            >
+              Explore Catalog
             </Link>
           </div>
         </div>
@@ -101,8 +149,10 @@ export default function CertificatePage() {
     );
   }
 
-  const certNumber = certificate.certificate_hash || "DEV-CERT-8902";
-  const issueDate = formatDate(new Date(certificate.issued_at || Date.now()));
+  const certNumber = certificate.certificate_hash || certificate.certificateHash || "DEV-CERT-8902";
+  const issueDate = formatDate(new Date(certificate.issued_at || certificate.issuedAt || Date.now()));
+  const recipientName = certificate.username || certificate.studentName || user?.username || "DevOps Specialist";
+  const courseTitle = certificate.course_title || certificate.courseTitle || course?.title || "DevOps Course";
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(window.location.href);
@@ -116,7 +166,7 @@ export default function CertificatePage() {
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-yellow-400/10 text-yellow-400 border border-yellow-400/30">
             <Sparkles className="w-3.5 h-3.5" /> Official DevOps Academy Credential
           </span>
-          <h1 className="text-3xl font-display font-bold">🎉 Congratulations, {user?.username || "Engineer"}!</h1>
+          <h1 className="text-3xl font-display font-bold">🎉 Congratulations, {recipientName}!</h1>
           <p className="text-muted-foreground text-sm">Your professional certificate of completion is verified and ready to share.</p>
         </div>
 
@@ -143,12 +193,12 @@ export default function CertificatePage() {
             <div className="text-center space-y-5">
               <p className="text-muted-foreground text-sm">This is to certify that</p>
               <h2 className="text-3xl sm:text-4xl font-display font-extrabold gradient-text">
-                {user?.username || "DevOps Specialist"}
+                {recipientName}
               </h2>
               <p className="text-muted-foreground text-sm">has successfully mastered and completed all modules of</p>
-              <h3 className="text-2xl sm:text-3xl font-display font-bold text-foreground">{course.title}</h3>
+              <h3 className="text-2xl sm:text-3xl font-display font-bold text-foreground">{courseTitle}</h3>
               <p className="text-sm text-muted-foreground max-w-lg mx-auto leading-relaxed">
-                Demonstrating practical, hands-on engineering proficiency in {course.category || "DevOps Engineering"} across {course.durationHours || 12} hours of rigorous curriculum and real-world labs.
+                Demonstrating practical, hands-on engineering proficiency in {course.category || "DevOps Engineering"} across {course.duration_hours || course.durationHours || 12} hours of rigorous curriculum and real-world labs.
               </p>
 
               {/* Stats pill */}

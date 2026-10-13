@@ -1,0 +1,12 @@
+apiVersion: 1
+
+providers:
+  - name: 'DevOps Academy Dashboards'
+    orgId: 1
+    folder: 'DevOps Academy'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

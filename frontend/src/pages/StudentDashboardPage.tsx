@@ -37,10 +37,11 @@ export default function StudentDashboardPage() {
 
       // 2. Try fetching from backend API if available
       try {
-        const [coursesRes, enrollmentsRes, trackerRes] = await Promise.all([
+        const [coursesRes, enrollmentsRes, trackerRes, quizAttemptsRes] = await Promise.all([
           apiService.courses.getAll(true),
           apiService.enrollments.getMyEnrollments(),
           apiService.tracker.getTrackerData(),
+          user ? apiService.quizzes.getMyAttempts().catch(() => null) : Promise.resolve(null),
         ]);
         if (coursesRes.success && Array.isArray(coursesRes.data) && coursesRes.data.length > 0) {
           setCourses(coursesRes.data.map(mapBackendCourseToFrontend));
@@ -77,6 +78,20 @@ export default function StudentDashboardPage() {
         } else {
           // Backend offline: fall back to lmsStore localStorage streak
           setStreak(lmsStore.getStreak());
+        }
+
+        // Merge real PostgreSQL quiz attempts
+        if (quizAttemptsRes && quizAttemptsRes.success && Array.isArray(quizAttemptsRes.data) && quizAttemptsRes.data.length > 0) {
+          const mappedAttempts: QuizAttempt[] = quizAttemptsRes.data.map((qa: any) => ({
+            quizId: qa.quiz_id,
+            courseSlug: qa.course_slug || (courses.find(c => Number(c.id) === Number(qa.course_id))?.slug) || 'devops',
+            score: qa.score,
+            passed: qa.passed,
+            totalQuestions: qa.total_questions || 0,
+            correctCount: qa.correct_count || 0,
+            date: qa.created_at || new Date().toISOString(),
+          }));
+          setQuizAttempts(mappedAttempts);
         }
       } catch {
         // Backend offline, fallback seamlessly to local store
@@ -122,9 +137,9 @@ export default function StudentDashboardPage() {
     { name: "Linux & CLI", slug: "linux-fundamentals", defaultVal: 65, color: "bg-orange-500" },
     { name: "Containers & Docker", slug: "docker-mastery", defaultVal: 50, color: "bg-blue-500" },
     { name: "Kubernetes & Orchestration", slug: "kubernetes-in-action", defaultVal: 40, color: "bg-cyan-500" },
-    { name: "CI/CD Automation", slug: "cicd-jenkins-actions", defaultVal: 30, color: "bg-green-500" },
+    { name: "CI/CD Automation", slug: "jenkins-cicd-pipelines", defaultVal: 30, color: "bg-green-500" },
     { name: "Infrastructure as Code", slug: "terraform-infrastructure-as-code", defaultVal: 45, color: "bg-purple-500" },
-    { name: "Cloud & AWS", slug: "aws-cloud-devops", defaultVal: 35, color: "bg-amber-500" },
+    { name: "Cloud & AWS", slug: "aws-devops-engineer", defaultVal: 35, color: "bg-amber-500" },
   ].map(skill => {
     const enrolled = enrolledCourses.find(c => c.slug === skill.slug);
     const score = enrolled ? enrolled.progress : skill.defaultVal;
@@ -432,17 +447,27 @@ export default function StudentDashboardPage() {
           {/* Recent Quiz Performance */}
           {quizAttempts.length > 0 && (
             <div className="p-5 rounded-2xl border border-border bg-card space-y-3">
-              <h3 className="font-display font-semibold text-sm flex items-center gap-2">
-                <Zap className="w-4 h-4 text-accent" /> Assessment History
-              </h3>
+              <div className="flex items-center justify-between">
+                <h3 className="font-display font-semibold text-sm flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-accent" /> Assessment History
+                </h3>
+                {user && (
+                  <span className="text-[10px] text-green-400 font-medium">PostgreSQL Synced</span>
+                )}
+              </div>
               <div className="space-y-2">
-                {quizAttempts.slice(0, 3).map((attempt, idx) => (
+                {quizAttempts.slice(0, 4).map((attempt, idx) => (
                   <div key={idx} className="flex items-center justify-between p-2.5 rounded-xl bg-muted/40 text-xs">
-                    <div>
-                      <p className="font-medium capitalize">{attempt.courseSlug.replace(/-/g, ' ')}</p>
+                    <div className="min-w-0 pr-2">
+                      <Link
+                        to={`/quiz/${attempt.courseSlug}`}
+                        className="font-medium capitalize hover:text-primary transition-colors truncate block"
+                      >
+                        {attempt.courseSlug.replace(/-/g, ' ')}
+                      </Link>
                       <p className="text-[10px] text-muted-foreground">{new Date(attempt.date).toLocaleDateString()}</p>
                     </div>
-                    <span className={cn("font-bold px-2 py-0.5 rounded text-xs", attempt.passed ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400")}>
+                    <span className={cn("font-bold px-2 py-0.5 rounded text-xs shrink-0", attempt.passed ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400")}>
                       {attempt.score}% {attempt.passed ? "Passed" : "Retake"}
                     </span>
                   </div>
