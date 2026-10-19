@@ -26,7 +26,7 @@ const LOGS_KEY = "da-email-logs";
 const DEFAULT_SETTINGS: EmailSettings = {
   adminEmail: "jatinsharma932002@gmail.com",
   smtpHost: "smtp.gmail.com",
-  smtpPort: 587,
+  smtpPort: 465,
   smtpUser: "jatinsharma932002@gmail.com",
   notifyOnRegistration: true,
   notifyOnEnrollment: true,

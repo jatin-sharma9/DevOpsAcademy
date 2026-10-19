@@ -259,7 +259,7 @@ export const migrate = async () => {
         id SERIAL PRIMARY KEY,
         admin_email VARCHAR(255) DEFAULT 'jatinsharma932002@gmail.com',
         smtp_host VARCHAR(255) DEFAULT 'smtp.gmail.com',
-        smtp_port INTEGER DEFAULT 587,
+        smtp_port INTEGER DEFAULT 465,
         smtp_user VARCHAR(255) DEFAULT 'jatinsharma932002@gmail.com',
         notify_on_registration BOOLEAN DEFAULT TRUE,
         notify_on_enrollment BOOLEAN DEFAULT TRUE,

@@ -43,14 +43,59 @@ async function runEmailTests() {
 
   try {
     // -------------------------------------------------------------
-    console.log('--- TEST SUITE 1: Email Service Initialization ---');
+    console.log('--- TEST SUITE 1: SMTP Default Configuration & Environment Overrides ---');
     // -------------------------------------------------------------
-    const status = emailService.getStatus();
-    assert(status !== null, 'Email service status object exists');
-    assert(status.host === 'smtp.gmail.com', `Default SMTP host is smtp.gmail.com (actual: ${status.host})`);
-    assert(status.port === 465, `Default SMTP port is 465 (actual: ${status.port})`);
-    assert(status.secure === true, `Default SMTP secure is true (actual: ${status.secure})`);
-    assert(status.isMock === true, 'Transporter safely runs in MOCK/Simulated mode when credentials are blank');
+    const savedEnv = {
+      SMTP_SERVICE: process.env.SMTP_SERVICE,
+      SMTP_HOST: process.env.SMTP_HOST,
+      SMTP_PORT: process.env.SMTP_PORT,
+      SMTP_SECURE: process.env.SMTP_SECURE,
+      SMTP_USER: process.env.SMTP_USER,
+      SMTP_PASS: process.env.SMTP_PASS,
+    };
+
+    // 1.1 Verify default configuration with all SMTP env vars unset
+    delete process.env.SMTP_SERVICE;
+    delete process.env.SMTP_HOST;
+    delete process.env.SMTP_PORT;
+    delete process.env.SMTP_SECURE;
+    delete process.env.SMTP_USER;
+    delete process.env.SMTP_PASS;
+
+    const defaultConfig = emailService.getStatus();
+    assert(defaultConfig !== null, 'Email service status object exists without env vars');
+    assert(defaultConfig.provider === 'Gmail', `Default provider is Gmail (actual: ${defaultConfig.provider})`);
+    assert(defaultConfig.host === 'smtp.gmail.com', `Default SMTP host is smtp.gmail.com (actual: ${defaultConfig.host})`);
+    assert(defaultConfig.port === 465, `Default SMTP port is 465 (actual: ${defaultConfig.port})`);
+    assert(defaultConfig.secure === true, `Default SMTP secure is true (actual: ${defaultConfig.secure})`);
+    assert(defaultConfig.configured === false, 'Credentials are not hardcoded (configured: false)');
+    assert(defaultConfig.isMock === true, 'Runs safely in mock mode without credentials');
+
+    // 1.2 Verify custom SMTP provider override (e.g., SendGrid)
+    process.env.SMTP_HOST = 'smtp.sendgrid.net';
+    process.env.SMTP_PORT = '587';
+    process.env.SMTP_SECURE = 'false';
+
+    const customHostConfig = emailService.getStatus();
+    assert(customHostConfig.host === 'smtp.sendgrid.net', `Custom host override works (actual: ${customHostConfig.host})`);
+    assert(customHostConfig.port === 587, `Custom port override works (actual: ${customHostConfig.port})`);
+    assert(customHostConfig.secure === false, `Custom secure override works (actual: ${customHostConfig.secure})`);
+    assert(customHostConfig.provider === 'smtp.sendgrid.net', `Custom provider identified (actual: ${customHostConfig.provider})`);
+
+    // 1.3 Verify custom service override (e.g., Mailgun)
+    delete process.env.SMTP_HOST;
+    process.env.SMTP_SERVICE = 'mailgun';
+    const customServiceConfig = emailService.getStatus();
+    assert(customServiceConfig.provider === 'Mailgun', `Custom service provider identified (actual: ${customServiceConfig.provider})`);
+
+    // Restore original env vars
+    for (const [k, v] of Object.entries(savedEnv)) {
+      if (v !== undefined) {
+        process.env[k] = v;
+      } else {
+        delete process.env[k];
+      }
+    }
 
     const connection = await emailService.verifyConnection();
     assert(connection.verified === true, 'Transporter connection verification returns valid status');
@@ -61,7 +106,10 @@ async function runEmailTests() {
     const statusApiRes = await request('/email/status');
     assert(statusApiRes.status === 200, 'GET /api/email/status returns 200 OK');
     assert(statusApiRes.data?.success === true, 'Response contains success: true');
-    assert(statusApiRes.data?.status?.provider === 'Gmail', 'Provider correctly identified as Gmail');
+    assert(statusApiRes.data?.status?.provider === 'Gmail', `API provider identified as Gmail (actual: ${statusApiRes.data?.status?.provider})`);
+    assert(statusApiRes.data?.status?.host === 'smtp.gmail.com', `API SMTP host is smtp.gmail.com (actual: ${statusApiRes.data?.status?.host})`);
+    assert(statusApiRes.data?.status?.port === 465, `API SMTP port is 465 (actual: ${statusApiRes.data?.status?.port})`);
+    assert(statusApiRes.data?.status?.secure === true, `API SMTP secure is true (actual: ${statusApiRes.data?.status?.secure})`);
 
     // -------------------------------------------------------------
     console.log('\n--- TEST SUITE 3: Test Email Dispatch Endpoint ---');

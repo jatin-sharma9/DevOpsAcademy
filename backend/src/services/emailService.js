@@ -13,31 +13,70 @@ dotenv.config();
 
 /**
  * Configure Nodemailer Transporter
- * Supports Gmail SMTP and standard custom SMTP providers
+ * Gmail is the default SMTP provider (host: smtp.gmail.com, port: 465, secure: true).
+ * Supports environment variables (SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_SERVICE) to override these defaults.
+ * Preserves support for other SMTP providers when explicitly configured.
+ * Email credentials are never hardcoded and default to empty.
  */
-const getSmtpConfig = () => {
-  const isGmail =
-    process.env.SMTP_SERVICE?.toLowerCase() === 'gmail' ||
-    (process.env.SMTP_HOST && process.env.SMTP_HOST.includes('gmail')) ||
-    (!process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_USER.includes('@gmail.com'));
+export const getSmtpConfig = () => {
+  const serviceEnv = (process.env.SMTP_SERVICE || '').trim().toLowerCase();
+  const hostEnv = (process.env.SMTP_HOST || '').trim();
+  const portEnv = (process.env.SMTP_PORT || '').trim();
+  const secureEnv = (process.env.SMTP_SECURE || '').trim().toLowerCase();
 
-  const host = process.env.SMTP_HOST || (isGmail ? 'smtp.gmail.com' : 'localhost');
-  const port = parseInt(process.env.SMTP_PORT || (isGmail ? '465' : '587'), 10);
-  const secure = process.env.SMTP_SECURE === 'true' || port === 465;
+  // Check if a non-Gmail host or service was explicitly configured
+  const isExplicitNonGmailHost = Boolean(hostEnv && !hostEnv.toLowerCase().includes('gmail'));
+  const isExplicitNonGmailService = Boolean(serviceEnv && serviceEnv !== 'gmail');
+  const isExplicitCustom = isExplicitNonGmailHost || isExplicitNonGmailService;
+
+  // Gmail is the default SMTP provider unless explicitly configured otherwise
+  const isGmail = !isExplicitCustom;
+
+  // Host: defaults to smtp.gmail.com (overridden by SMTP_HOST if set)
+  const host = hostEnv || (isGmail ? 'smtp.gmail.com' : 'localhost');
+
+  // Port: defaults to 465 for Gmail, 587 for standard SMTP STARTTLS (overridden by SMTP_PORT if set)
+  let port;
+  if (portEnv) {
+    port = parseInt(portEnv, 10);
+  } else {
+    port = isGmail ? 465 : 587;
+  }
+
+  // Secure: defaults to true (port 465 / Gmail SSL), false for port 587 STARTTLS (overridden by SMTP_SECURE if set)
+  let secure;
+  if (secureEnv === 'true') {
+    secure = true;
+  } else if (secureEnv === 'false') {
+    secure = false;
+  } else {
+    secure = port === 465 || isGmail;
+  }
+
   const user = process.env.SMTP_USER || '';
   const pass = process.env.SMTP_PASS || '';
-
   const hasCredentials = Boolean(user && pass);
+
+  // Friendly provider name for status reporting and logs
+  let provider;
+  if (isGmail) {
+    provider = 'Gmail';
+  } else if (serviceEnv) {
+    provider = serviceEnv.charAt(0).toUpperCase() + serviceEnv.slice(1);
+  } else {
+    provider = host;
+  }
 
   return {
     isGmail,
+    provider,
     host,
     port,
     secure,
     user,
     pass,
     hasCredentials,
-    service: isGmail ? 'gmail' : undefined,
+    service: isGmail ? 'gmail' : (serviceEnv || undefined),
   };
 };
 
@@ -176,13 +215,13 @@ export const emailService = {
     return {
       configured: config.hasCredentials,
       isMock: isMockTransporter,
-      provider: config.isGmail ? 'Gmail' : config.host,
+      provider: config.provider,
       host: config.host,
       port: config.port,
       secure: config.secure,
       user: config.user ? config.user.replace(/(.{2})(.*)(@.*)/, '$1***$3') : null,
       adminEmail: process.env.ADMIN_EMAIL || 'jatinsharma932002@gmail.com',
-      fromEmail: process.env.EMAIL_FROM || 'noreply@devopsacademy.com',
+      fromEmail: process.env.EMAIL_FROM || '"DevOps Academy" <noreply@devopsacademy.com>',
     };
   },
 

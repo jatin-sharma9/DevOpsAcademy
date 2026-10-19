@@ -358,7 +358,7 @@ export const getEmailSettings = async (req, res) => {
       // Create default record if not exists
       const inserted = await query(`
         INSERT INTO email_settings (admin_email, smtp_host, smtp_port, smtp_user)
-        VALUES ('jatinsharma932002@gmail.com', 'smtp.gmail.com', 587, 'jatinsharma932002@gmail.com')
+        VALUES ('jatinsharma932002@gmail.com', 'smtp.gmail.com', 465, 'jatinsharma932002@gmail.com')
         RETURNING *
       `);
       return res.status(200).json({ success: true, data: inserted.rows[0] });
@@ -428,7 +428,7 @@ export const saveEmailSettings = async (req, res) => {
         [
           admin_email || 'jatinsharma932002@gmail.com',
           smtp_host || 'smtp.gmail.com',
-          smtp_port ? parseInt(smtp_port, 10) : 587,
+          smtp_port ? parseInt(smtp_port, 10) : 465,
           smtp_user || 'jatinsharma932002@gmail.com',
           notify_on_registration !== undefined ? notify_on_registration : true,
           notify_on_enrollment !== undefined ? notify_on_enrollment : true,

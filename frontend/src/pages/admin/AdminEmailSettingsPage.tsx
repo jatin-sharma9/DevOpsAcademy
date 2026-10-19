@@ -30,7 +30,7 @@ export default function AdminEmailSettingsPage() {
         const mappedSettings: EmailSettings = {
           adminEmail: d.admin_email || "jatinsharma932002@gmail.com",
           smtpHost: d.smtp_host || "smtp.gmail.com",
-          smtpPort: d.smtp_port || 587,
+          smtpPort: d.smtp_port || 465,
           smtpUser: d.smtp_user || "jatinsharma932002@gmail.com",
           notifyOnRegistration: d.notify_on_registration !== false,
           notifyOnEnrollment: d.notify_on_enrollment !== false,
