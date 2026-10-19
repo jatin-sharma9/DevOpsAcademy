@@ -307,10 +307,49 @@ export default function Navbar() {
                   {link.label}
                 </Link>
               ))}
-              {!isAuthenticated && (
+              {!isAuthenticated ? (
                 <div className="flex gap-2 pt-2 border-t border-border">
                   <Link to="/login" onClick={() => setMobileOpen(false)} className="flex-1 text-center py-2.5 text-sm font-medium rounded-lg border border-border hover:bg-muted transition-colors">Sign In</Link>
                   <Link to="/register" onClick={() => setMobileOpen(false)} className="flex-1 text-center py-2.5 text-sm font-medium rounded-lg bg-primary text-primary-foreground">Get Started</Link>
+                </div>
+              ) : (
+                <div className="pt-2 border-t border-border space-y-1">
+                  <div className="px-3 py-1.5 flex items-center justify-between text-xs text-muted-foreground">
+                    <span className="font-semibold text-foreground">{user?.username}</span>
+                    <span className="capitalize">{user?.role}</span>
+                  </div>
+                  <Link
+                    to="/dashboard"
+                    onClick={() => setMobileOpen(false)}
+                    className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium hover:bg-muted transition-colors"
+                  >
+                    <LayoutDashboard className="w-4 h-4 text-muted-foreground" /> Dashboard
+                  </Link>
+                  <Link
+                    to="/profile"
+                    onClick={() => setMobileOpen(false)}
+                    className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium hover:bg-muted transition-colors"
+                  >
+                    <User className="w-4 h-4 text-muted-foreground" /> Profile
+                  </Link>
+                  {(user?.role === "admin" || user?.role === "instructor") && (
+                    <Link
+                      to="/admin"
+                      onClick={() => setMobileOpen(false)}
+                      className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium hover:bg-muted transition-colors"
+                    >
+                      <Shield className="w-4 h-4 text-muted-foreground" /> Admin Panel
+                    </Link>
+                  )}
+                  <button
+                    onClick={() => {
+                      setMobileOpen(false);
+                      handleLogout();
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors text-left cursor-pointer"
+                  >
+                    <LogOut className="w-4 h-4" /> Sign out
+                  </button>
                 </div>
               )}
             </div>

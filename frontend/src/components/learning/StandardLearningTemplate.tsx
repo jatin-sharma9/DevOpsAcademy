@@ -10,6 +10,14 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
+export interface ParsedQuizQuestion {
+  id: string;
+  question: string;
+  options: { id: string; text: string }[];
+  correctAnswer: string;
+  explanation: string;
+}
+
 export interface ParsedLessonContent {
   raw: string;
   theory: string;
@@ -17,6 +25,7 @@ export interface ParsedLessonContent {
   commandsRaw: string;
   interviewQARaw: string;
   labStepsRaw: string;
+  revisionRaw: string;
 }
 
 export function parseLessonContent(content: string): ParsedLessonContent {
@@ -26,13 +35,14 @@ export function parseLessonContent(content: string): ParsedLessonContent {
     realWorld: "",
     commandsRaw: "",
     interviewQARaw: "",
-    labStepsRaw: ""
+    labStepsRaw: "",
+    revisionRaw: ""
   };
 
   if (!content) return result;
 
-  // Split on section headers (### [emojis] 1., 2., 3., 4., 5.)
-  const sections = content.split(/\n(?=###\s*(?:[^\n]*?[1-5]\.\s*))/);
+  // Split on section headers (### [emojis] 1., 2., 3., 4., 5., 6.)
+  const sections = content.split(/\n(?=###\s*(?:[^\n]*?[1-6]\.\s*))/);
 
   for (const sec of sections) {
     const trimmed = sec.trim();
@@ -52,14 +62,79 @@ export function parseLessonContent(content: string): ParsedLessonContent {
       result.realWorld = body;
     } else if (/3\.\s*(?:practical\s*commands|commands|production)/i.test(headerLine)) {
       result.commandsRaw = body;
-    } else if (/4\.\s*.*(?:interview|troubleshooting|q&a|scenario)/i.test(headerLine)) {
+    } else if (/4\.\s*.*(?:interview|troubleshooting|q&a|scenario|error)/i.test(headerLine)) {
       result.interviewQARaw = body;
     } else if (/5\.\s*.*(?:practical|hands-on|lab|exercise)/i.test(headerLine)) {
       result.labStepsRaw = body;
+    } else if (/6\.\s*.*(?:revision|notes|quiz|summary|checklist)/i.test(headerLine)) {
+      result.revisionRaw = body;
     }
   }
 
   return result;
+}
+
+export function parseTopicQuiz(raw: string): { revisionNotes: string; questions: ParsedQuizQuestion[] } {
+  if (!raw) return { revisionNotes: "", questions: [] };
+
+  const questions: ParsedQuizQuestion[] = [];
+  const questionBlocks = raw.split(/(?=(?:^|\n)(?:-\s*)?\*\*Quiz\s*Q\d+[:.]|\*\*Q\d+[:.])/gi);
+
+  let revisionNotes = questionBlocks[0] || "";
+  if (/^\s*(?:-\s*)?\*\*Quiz\s*Q\d+[:.]/i.test(revisionNotes.trim())) {
+    revisionNotes = "";
+  }
+  // Strip any trailing quiz header from the revision notes so it isn't rendered twice
+  revisionNotes = revisionNotes.replace(/#{1,4}\s*(?:Topic\s*)?(?:Self-Assessment\s*)?Quiz[\s\S]*$/i, "").trim();
+
+  const questionChunks = questionBlocks.filter(chunk => /^\s*(?:-\s*)?\*\*Quiz\s*Q\d+[:.]|\*\*Q\d+[:.]/i.test(chunk.trim()));
+
+  questionChunks.forEach((chunk, qIdx) => {
+    const qMatch = chunk.match(/\*\*(?:Quiz\s*)?Q\d+[:.]\s*([^*]+)\*\*/i);
+    const qTitle = qMatch ? qMatch[1].trim() : `Question ${qIdx + 1}`;
+
+    const optionLines = chunk.split("\n").filter(line => /^\s*(?:-\s*)?(?:\[[ xX]\]|[A-Da-d][).])\s+/.test(line));
+    const options: { id: string; text: string }[] = [];
+    let detectedCorrect = "";
+
+    optionLines.forEach((optLine, optIdx) => {
+      const isChecked = /\[[xX]\]/.test(optLine);
+      const letterMatch = optLine.match(/(?:\[[ xX]\]|[A-Da-d][).])\s*(.*)/);
+      const optLetter = String.fromCharCode(65 + optIdx);
+      let optText = letterMatch ? letterMatch[1].trim() : optLine.trim();
+      // Remove any duplicate "A) " or "A. " from the text
+      optText = optText.replace(/^[A-Da-d][).]\s*/, "").trim();
+
+      if (isChecked) {
+        detectedCorrect = optLetter;
+      }
+      options.push({
+        id: optLetter,
+        text: optText
+      });
+    });
+
+    const correctMatch = chunk.match(/\*(?:Correct Answer|Correct):\*\s*([A-Da-d])/i);
+    if (correctMatch) {
+      detectedCorrect = correctMatch[1].toUpperCase();
+    }
+    if (!detectedCorrect && options.length > 0) {
+      detectedCorrect = "A";
+    }
+
+    const expMatch = chunk.match(/\*(?:Explanation):\*\s*([\s\S]+?)(?=(?:\n\*\*|$))/i);
+    const explanation = expMatch ? expMatch[1].trim() : "Review the module theory and command references above.";
+
+    questions.push({
+      id: `topic_q_${qIdx + 1}`,
+      question: qTitle,
+      options,
+      correctAnswer: detectedCorrect,
+      explanation
+    });
+  });
+
+  return { revisionNotes: revisionNotes.trim(), questions };
 }
 
 interface QAItem {
@@ -160,22 +235,28 @@ export default function StandardLearningTemplate({
   onComplete,
   isCompleted = false
 }: StandardLearningTemplateProps) {
-  const [activePillar, setActivePillar] = useState<"theory" | "architecture" | "commands" | "qa" | "lab">("theory");
+  const [activePillar, setActivePillar] = useState<"theory" | "architecture" | "commands" | "qa" | "lab" | "revision">("theory");
   const [revealedQA, setRevealedQA] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [labVerified, setLabVerified] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const [selectedQuizAnswers, setSelectedQuizAnswers] = useState<Record<string, string>>({});
 
-  // Parse structured 5-pillar sections from lesson content
+  // Parse structured 6-pillar sections from lesson content
   const parsed = useMemo(() => parseLessonContent(lesson.content || ""), [lesson.content]);
   const qaItems = useMemo(() => parseInterviewQA(parsed.interviewQARaw), [parsed.interviewQARaw]);
   const commandData = useMemo(() => parseCodeBlocks(parsed.commandsRaw), [parsed.commandsRaw]);
+  const topicQuizData = useMemo(() => parseTopicQuiz(parsed.revisionRaw), [parsed.revisionRaw]);
 
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
     toast.success("Command copied to clipboard");
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleQuizOptionSelect = (qId: string, optId: string) => {
+    setSelectedQuizAnswers(prev => ({ ...prev, [qId]: optId }));
   };
 
   const toggleQA = (id: string) => {
@@ -196,15 +277,65 @@ export default function StandardLearningTemplate({
     }, 1200);
   };
 
-  // Helper to format clean markdown paragraphs & bullet points
+  // Helper to format clean markdown paragraphs, headings & bullet points
   const renderFormattedMarkdown = (text: string) => {
     if (!text) return null;
-    const paragraphs = text.split("\n\n").filter(Boolean);
+    const normalized = text
+      .replace(/\r\n/g, "\n")
+      .replace(/\n(#{1,4}\s)/g, "\n\n$1")
+      .replace(/(#{1,4}[^\n]+)\n([^\n#])/g, "$1\n\n$2");
+
+    const paragraphs = normalized.split("\n\n").filter(Boolean);
 
     return (
       <div className="space-y-4 text-sm leading-relaxed text-muted-foreground">
         {paragraphs.map((para, pIdx) => {
           const trimmed = para.trim();
+
+          // Heading 4
+          if (trimmed.startsWith("#### ")) {
+            return (
+              <h4 key={pIdx} className="text-sm font-bold text-foreground mt-4 mb-2 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+                {trimmed.replace(/^####\s*/, "")}
+              </h4>
+            );
+          }
+
+          // Heading 3
+          if (trimmed.startsWith("### ")) {
+            return (
+              <h3 key={pIdx} className="text-base font-bold text-foreground mt-5 mb-2">
+                {trimmed.replace(/^###\s*/, "")}
+              </h3>
+            );
+          }
+
+          // Checklist items (- [x] or - [ ])
+          if (trimmed.includes("- [x]") || trimmed.includes("- [ ]") || trimmed.includes("- [X]")) {
+            const items = trimmed.split("\n").filter(l => /-\s*\[[ xX]\]/.test(l));
+            if (items.length > 0) {
+              return (
+                <div key={pIdx} className="space-y-2 my-3">
+                  {items.map((item, iIdx) => {
+                    const checked = /-\s*\[[xX]\]/.test(item);
+                    const content = item.replace(/^[\s-*]*\[[ xX]\]\s*/, "");
+                    return (
+                      <div key={iIdx} className="flex items-start gap-3 p-3 rounded-xl bg-card/60 border border-border/60 hover:border-primary/30 transition-colors">
+                        <span className={cn(
+                          "w-5 h-5 rounded-md mt-0.5 flex items-center justify-center text-xs font-bold shrink-0",
+                          checked ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40" : "bg-muted text-muted-foreground border border-border"
+                        )}>
+                          {checked ? "✓" : ""}
+                        </span>
+                        <div className="flex-1 text-xs text-foreground/90 leading-relaxed" dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(content) }} />
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            }
+          }
 
           // Code blocks
           if (trimmed.startsWith("```")) {
@@ -304,15 +435,16 @@ export default function StandardLearningTemplate({
 
   return (
     <div className="space-y-6">
-      {/* ─── 5-PILLAR STANDARD LEARNING TABS ─── */}
+      {/* ─── 6-PILLAR STANDARD LEARNING TABS ─── */}
       <div className="border border-border/60 bg-card/60 backdrop-blur rounded-2xl p-1.5 shadow-sm">
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-1">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5">
           {[
-            { id: "theory", label: "1. Theory", icon: BookOpen, badge: "Concepts" },
-            { id: "architecture", label: "2. Architecture", icon: Layers, badge: "Real-World" },
-            { id: "commands", label: "3. Commands", icon: Code2, badge: "Cheat Sheet" },
-            { id: "qa", label: "4. Triage & Q&A", icon: HelpCircle, badge: `${qaItems.length || "5"} Scenarios` },
+            { id: "theory", label: "1. Theory", icon: BookOpen, badge: "Deep Dive" },
+            { id: "architecture", label: "2. Architecture", icon: Layers, badge: "Workflows" },
+            { id: "commands", label: "3. Commands", icon: Code2, badge: "Syntax & Output" },
+            { id: "qa", label: "4. Triage & Errors", icon: HelpCircle, badge: `${qaItems.length || "5"} Runbooks` },
             { id: "lab", label: "5. Hands-on Lab", icon: Terminal, badge: "Sandbox" },
+            { id: "revision", label: "6. Revision & Quiz", icon: Award, badge: `${topicQuizData.questions.length ? `${topicQuizData.questions.length} Questions` : "Review"}` },
           ].map((tab) => {
             const active = activePillar === tab.id;
             return (
@@ -741,14 +873,207 @@ export default function StandardLearningTemplate({
               >
                 Back to Q&A
               </button>
+              <button
+                onClick={() => setActivePillar("revision")}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold transition-all cursor-pointer shadow-md shadow-primary/20"
+              >
+                Proceed to Pillar 6: Revision & Quiz <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* ─── PILLAR 6: REVISION NOTES & TOPIC-WISE QUIZ ─── */}
+        {activePillar === "revision" && (
+          <motion.div
+            key="revision"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
+            className="space-y-6"
+          >
+            {/* Revision Summary Card */}
+            <div className="p-6 sm:p-8 rounded-2xl border border-border bg-card shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-border/60 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-violet-500/10 text-violet-400 flex items-center justify-center font-bold">
+                    <Award className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="text-[11px] font-mono uppercase tracking-wider text-violet-400 font-bold">Pillar 6 · High-Yield Summary</span>
+                    <h2 className="text-lg font-bold text-foreground font-display">Topic Revision Notes & Core Mental Models</h2>
+                  </div>
+                </div>
+                <span className="hidden sm:inline-flex px-2.5 py-1 rounded-full bg-violet-500/10 text-violet-400 text-[11px] font-mono">
+                  Quick Review
+                </span>
+              </div>
+
+              {topicQuizData.revisionNotes ? (
+                renderFormattedMarkdown(topicQuizData.revisionNotes)
+              ) : parsed.revisionRaw ? (
+                renderFormattedMarkdown(parsed.revisionRaw)
+              ) : (
+                <div className="p-4 rounded-xl border border-violet-500/20 bg-violet-500/5 text-sm text-muted-foreground">
+                  <p className="font-semibold text-foreground mb-1">Key Concept Review</p>
+                  <p>Consolidate your knowledge of {lesson.title}. Review the commands and architectural principles before verifying your mastery in the topic quiz below.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Topic-Wise Quiz Card */}
+            {topicQuizData.questions.length > 0 && (
+              <div className="p-6 sm:p-8 rounded-2xl border border-border bg-card shadow-sm space-y-6">
+                <div className="flex items-center justify-between border-b border-border/60 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold">
+                      <Zap className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="text-[11px] font-mono uppercase tracking-wider text-primary font-bold">Topic Self-Assessment</span>
+                      <h2 className="text-lg font-bold text-foreground font-display">Module Knowledge Check</h2>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono px-3 py-1 rounded-full bg-primary/10 text-primary font-semibold">
+                      {Object.keys(selectedQuizAnswers).length} / {topicQuizData.questions.length} Answered
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  {topicQuizData.questions.map((q, qIdx) => {
+                    const selected = selectedQuizAnswers[q.id];
+                    const isAnswered = !!selected;
+                    const isCorrect = selected === q.correctAnswer;
+
+                    return (
+                      <div key={q.id} className="p-5 rounded-2xl border border-border/80 bg-muted/20 space-y-4">
+                        <div className="flex items-start gap-3">
+                          <span className="w-6 h-6 rounded-lg bg-primary/15 text-primary border border-primary/30 flex items-center justify-center text-xs font-mono font-bold shrink-0 mt-0.5">
+                            {qIdx + 1}
+                          </span>
+                          <h3 className="text-sm font-semibold text-foreground leading-snug">
+                            {q.question}
+                          </h3>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                          {q.options.map((opt) => {
+                            const isOptSelected = selected === opt.id;
+                            const isOptCorrect = opt.id === q.correctAnswer;
+
+                            let optStyle = "border-border/70 bg-card hover:bg-muted/60 text-muted-foreground hover:text-foreground";
+                            if (isAnswered) {
+                              if (isOptCorrect) {
+                                optStyle = "border-emerald-500 bg-emerald-500/10 text-emerald-400 font-medium";
+                              } else if (isOptSelected) {
+                                optStyle = "border-red-500 bg-red-500/10 text-red-400 font-medium";
+                              } else {
+                                optStyle = "border-border/40 bg-card/40 opacity-60 text-muted-foreground";
+                              }
+                            }
+
+                            return (
+                              <button
+                                key={opt.id}
+                                onClick={() => handleQuizOptionSelect(q.id, opt.id)}
+                                className={cn(
+                                  "w-full text-left p-3.5 rounded-xl border text-xs transition-all flex items-start gap-2.5 cursor-pointer",
+                                  optStyle
+                                )}
+                              >
+                                <span className={cn(
+                                  "w-5 h-5 rounded-md flex items-center justify-center font-mono font-bold text-[10px] shrink-0 mt-0.5",
+                                  isAnswered && isOptCorrect
+                                    ? "bg-emerald-500 text-black font-bold"
+                                    : isAnswered && isOptSelected
+                                      ? "bg-red-500 text-white"
+                                      : "bg-muted text-foreground"
+                                )}>
+                                  {opt.id}
+                                </span>
+                                <span className="flex-1 leading-relaxed">{opt.text}</span>
+                                {isAnswered && isOptCorrect && (
+                                  <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                                )}
+                                {isAnswered && isOptSelected && !isOptCorrect && (
+                                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {isAnswered && (
+                          <div className={cn(
+                            "p-3.5 rounded-xl text-xs space-y-1.5 border animate-in fade-in duration-200",
+                            isCorrect
+                              ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-300"
+                              : "bg-amber-500/10 border-amber-500/25 text-amber-300"
+                          )}>
+                            <p className="font-semibold flex items-center gap-1.5">
+                              {isCorrect ? (
+                                <>
+                                  <CheckCircle className="w-4 h-4 text-emerald-400" />
+                                  <span>Correct Answer ({q.correctAnswer})</span>
+                                </>
+                              ) : (
+                                <>
+                                  <AlertCircle className="w-4 h-4 text-amber-400" />
+                                  <span>Incorrect (Correct: {q.correctAnswer})</span>
+                                </>
+                              )}
+                            </p>
+                            <p className="text-muted-foreground/90 pl-5 leading-relaxed">
+                              {q.explanation}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Score Tally Summary */}
+                {Object.keys(selectedQuizAnswers).length === topicQuizData.questions.length && (
+                  <div className="p-4 rounded-xl bg-gradient-to-r from-primary/10 via-card to-card border border-primary/30 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-primary/20 text-primary flex items-center justify-center font-bold">
+                        <Sparkles className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-foreground">Knowledge Check Completed!</h4>
+                        <p className="text-xs text-muted-foreground">
+                          You scored {topicQuizData.questions.filter(q => selectedQuizAnswers[q.id] === q.correctAnswer).length} of {topicQuizData.questions.length} correct.
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-mono font-bold text-primary px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20">
+                      {Math.round((topicQuizData.questions.filter(q => selectedQuizAnswers[q.id] === q.correctAnswer).length / topicQuizData.questions.length) * 100)}% Mastery
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Navigation & Complete Button */}
+            <div className="flex justify-between">
+              <button
+                onClick={() => setActivePillar("lab")}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-border hover:bg-muted text-xs font-semibold transition-all cursor-pointer"
+              >
+                Back to Lab
+              </button>
               {onComplete && (
                 <button
                   onClick={onComplete}
                   className={cn(
-                    "flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer",
+                    "flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-md",
                     isCompleted
                       ? "bg-secondary/20 text-secondary border border-secondary/30"
-                      : "bg-primary text-primary-foreground hover:bg-primary/90 shadow-md shadow-primary/25"
+                      : "bg-primary text-primary-foreground hover:bg-primary/90 shadow-primary/25"
                   )}
                 >
                   <CheckCircle2 className="w-4 h-4" />

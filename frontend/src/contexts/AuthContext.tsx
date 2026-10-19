@@ -39,8 +39,17 @@ interface RegisterData {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const stored = localStorage.getItem("da-user");
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [isLoading, setIsLoading] = useState(() => {
+    return !!localStorage.getItem("da-token");
+  });
 
   // Sync session on mount
   useEffect(() => {

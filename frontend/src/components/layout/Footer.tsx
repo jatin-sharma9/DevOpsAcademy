@@ -22,6 +22,7 @@ const FOOTER_LINKS: Record<string, FooterLink[]> = {
     { label: "Blog", href: "/blog" },
     { label: "Resume (PDF)", href: "/resume.pdf", download: "Jatin_Sharma_DevOps_Resume.pdf" },
     { label: "Dashboard", href: "/dashboard" },
+    { label: "Admin Portal", href: "/admin/login" },
   ],
   "Support": [
     { label: "Help Center", href: "/help" },

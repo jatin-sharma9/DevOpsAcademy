@@ -1,5 +1,5 @@
 services:
-  # ─── PostgreSQL Database ───────────────────────────────────────────────────
+  # PostgreSQL Database
   db:
     image: postgres:15-alpine
     container_name: devops_academy_db
@@ -20,7 +20,7 @@ services:
     networks:
       - devops_network
 
-  # ─── Node.js Express Backend API ──────────────────────────────────────────
+  # Node.js Express Backend API
   backend:
     build:
       context: ./backend
@@ -59,7 +59,7 @@ services:
     networks:
       - devops_network
 
-  # ─── Nginx Frontend Web Application ────────────────────────────────────────
+  # Nginx Frontend Web Application
   frontend:
     build:
       context: ./frontend
@@ -73,7 +73,7 @@ services:
     networks:
       - devops_network
 
-  # ─── Prometheus Metrics Collector ─────────────────────────────────────────
+  # Prometheus Metrics Collector
   prometheus:
     image: prom/prometheus:v2.48.0
     container_name: devops_academy_prometheus
@@ -82,6 +82,7 @@ services:
       - "${PROMETHEUS_PORT:-9095}:9090"
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -94,7 +95,23 @@ services:
     networks:
       - devops_network
 
-  # ─── Grafana Dashboard & Visualizations ───────────────────────────────────
+
+  # Alertmanager for Prometheus notifications
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    container_name: devops_academy_alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/alertmanager:/etc/alertmanager:ro
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+    networks:
+      - devops_network
+
+
+  # Grafana Dashboard & Visualizations
   grafana:
     image: grafana/grafana:10.2.2
     container_name: devops_academy_grafana
@@ -129,4 +146,3 @@ volumes:
 networks:
   devops_network:
     driver: bridge
-

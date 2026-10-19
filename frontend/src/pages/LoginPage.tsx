@@ -1,18 +1,51 @@
-import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Terminal, Eye, EyeOff, Loader2, AlertCircle, CheckCircle2, ShieldCheck, Cpu, Zap, Star } from "lucide-react";
+import {
+  Terminal,
+  Eye,
+  EyeOff,
+  Loader2,
+  AlertCircle,
+  CheckCircle2,
+  ShieldCheck,
+  Cpu,
+  Zap,
+  Star,
+  GraduationCap,
+  KeyRound,
+  ArrowRight,
+  Shield,
+} from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, user, isAuthenticated, isLoading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // Target path requested before redirect (if any)
+  const from = (location.state as { from?: { pathname?: string } })?.from?.pathname;
+
+  // Auto-redirect if already authenticated
+  useEffect(() => {
+    if (!isLoading && isAuthenticated && user) {
+      // If already logged in, redirect to student dashboard (or requested student page)
+      // Never auto-bounce users to the Admin Portal from the student login page
+      if (from && !from.startsWith("/admin")) {
+        navigate(from, { replace: true });
+      } else {
+        navigate("/dashboard", { replace: true });
+      }
+    }
+  }, [isAuthenticated, isLoading, user, navigate, from]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,7 +53,7 @@ export default function LoginPage() {
 
     const trimmedId = identifier.trim();
     if (!trimmedId) {
-      setError("Please enter your username or email.");
+      setError("Please enter your username or email address.");
       return;
     }
 
@@ -32,28 +65,29 @@ export default function LoginPage() {
     setLoading(true);
     const ok = await login(trimmedId, password);
     setLoading(false);
+
     if (ok) {
       toast.success("Welcome back!");
-      // Redirect based on user role
-      const stored = localStorage.getItem("da-user");
-      if (stored) {
-        try {
-          const u = JSON.parse(stored);
-          if (u.role === "admin") {
-            navigate("/admin");
-            return;
-          }
-        } catch {}
+      // Normal student sign-in always redirects to student dashboard or requested student page
+      if (from && !from.startsWith("/admin")) {
+        navigate(from, { replace: true });
+      } else {
+        navigate("/dashboard", { replace: true });
       }
-      navigate("/dashboard");
     } else {
-      setError("Invalid username/email or password.");
+      setError("Invalid username/email or password. Please try again.");
     }
+  };
+
+  const handleQuickStudent = () => {
+    setIdentifier("jatin");
+    setPassword("user123");
+    setError("");
   };
 
   return (
     <div className="min-h-screen flex bg-background">
-      {/* Left Panel */}
+      {/* Left Panel: CI/CD Pipeline Simulator & DevOps Academy Showcase */}
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-primary/15 via-background to-accent/15 p-10 xl:p-12 flex-col justify-between relative overflow-hidden border-r border-border/40">
         {/* Ambient Glowing Orbs */}
         <div className="absolute -top-28 -left-28 w-96 h-96 bg-primary/20 rounded-full blur-3xl pointer-events-none" />
@@ -85,7 +119,7 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Center: Interactive CI/CD Pipeline Simulator & Terminal Showcase */}
+        {/* Center: Interactive CI/CD Pipeline Simulator */}
         <div className="relative z-10 my-6">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
@@ -112,7 +146,6 @@ export default function LoginPage() {
 
             {/* Pipeline Stage Steps */}
             <div className="space-y-2.5 font-mono text-xs">
-              {/* Step 1 */}
               <div className="flex items-center justify-between p-2 rounded-lg bg-background/50 border border-border/40 hover:border-primary/30 transition-colors">
                 <div className="flex items-center gap-2.5">
                   <div className="w-5 h-5 rounded-md bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
@@ -126,7 +159,6 @@ export default function LoginPage() {
                 <span className="text-muted-foreground text-[11px]">0.8s</span>
               </div>
 
-              {/* Step 2 */}
               <div className="flex items-center justify-between p-2 rounded-lg bg-background/50 border border-border/40 hover:border-primary/30 transition-colors">
                 <div className="flex items-center gap-2.5">
                   <div className="w-5 h-5 rounded-md bg-sky-500/20 text-sky-400 flex items-center justify-center shrink-0">
@@ -140,7 +172,6 @@ export default function LoginPage() {
                 <span className="text-emerald-400 text-[11px] font-semibold">PASSED</span>
               </div>
 
-              {/* Step 3 */}
               <div className="flex items-center justify-between p-2 rounded-lg bg-background/50 border border-border/40 hover:border-primary/30 transition-colors">
                 <div className="flex items-center gap-2.5">
                   <div className="w-5 h-5 rounded-md bg-purple-500/20 text-purple-400 flex items-center justify-center shrink-0">
@@ -154,7 +185,6 @@ export default function LoginPage() {
                 <span className="text-purple-400 text-[11px] font-semibold">ROLLOUT OK</span>
               </div>
 
-              {/* Step 4 */}
               <div className="flex items-center justify-between p-2 rounded-lg bg-background/50 border border-border/40 hover:border-primary/30 transition-colors">
                 <div className="flex items-center gap-2.5">
                   <div className="w-5 h-5 rounded-md bg-primary/20 text-primary flex items-center justify-center shrink-0">
@@ -179,7 +209,7 @@ export default function LoginPage() {
             </div>
           </motion.div>
 
-          {/* Floating Pill Badges */}
+          {/* Floating Tech Badges */}
           <div className="mt-4 flex flex-wrap gap-2 items-center">
             <span className="text-xs text-muted-foreground font-medium mr-1">Hands-on Stack:</span>
             {["Docker", "Kubernetes", "Terraform", "CI/CD", "AWS", "Prometheus"].map((tech) => (
@@ -193,7 +223,7 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Bottom Social Proof & Metrics */}
+        {/* Bottom Metrics */}
         <div className="relative z-10 pt-4 border-t border-border/40">
           <div className="grid grid-cols-3 gap-3">
             <div className="p-3 rounded-xl bg-card/40 border border-border/50 backdrop-blur-sm">
@@ -214,39 +244,48 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Right Panel */}
+      {/* Right Panel: Student Sign In Form */}
       <div className="flex-1 flex items-center justify-center px-4 sm:px-8 py-12">
-        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="w-full max-w-sm space-y-6">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className="w-full max-w-sm space-y-6"
+        >
+          {/* Header */}
           <div className="space-y-2">
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/10 border border-primary/25 text-xs font-semibold text-primary">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Admin Gateway</span>
+              <GraduationCap className="w-3.5 h-3.5" />
+              <span>Student Sign In</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground tracking-tight">
-              Admin Portal
+              Welcome back
             </h1>
             <p className="text-sm text-muted-foreground">
-              Sign in with your verified administrator credentials.
+              Sign in to continue courses, take quizzes, and track your DevOps progress.
             </p>
           </div>
 
           <form onSubmit={handleSubmit} autoComplete="off" className="space-y-4">
             {error && (
-              <div role="alert" className="flex items-start gap-2.5 p-3.5 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+              <div
+                role="alert"
+                className="flex items-start gap-2.5 p-3.5 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-sm"
+              >
                 <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
                 <span className="leading-snug">{error}</span>
               </div>
             )}
 
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground" htmlFor="identifier">
+              <label className="text-sm font-medium text-foreground" htmlFor="login-identifier">
                 Username or Email
               </label>
               <input
-                id="identifier"
+                id="login-identifier"
                 type="text"
                 required
-                autoComplete="off"
+                autoComplete="username"
                 value={identifier}
                 onChange={(e) => {
                   setIdentifier(e.target.value);
@@ -258,14 +297,16 @@ export default function LoginPage() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground" htmlFor="password">
-                Password
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-foreground" htmlFor="login-password">
+                  Password
+                </label>
+              </div>
               <div className="relative">
                 <input
-                  id="password"
+                  id="login-password"
                   type={showPass ? "text" : "password"}
-                  autoComplete="new-password"
+                  autoComplete="current-password"
                   required
                   value={password}
                   onChange={(e) => {
@@ -294,16 +335,55 @@ export default function LoginPage() {
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Verifying Credentials...</span>
+                  <span>Signing In...</span>
                 </>
               ) : (
                 <>
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>Sign In to Admin Portal</span>
+                  <span>Sign In</span>
+                  <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
           </form>
+
+          {/* Quick Demo Helper */}
+          <div className="p-3 rounded-xl bg-muted/40 border border-border/50 text-xs text-muted-foreground flex items-center justify-between">
+            <span className="flex items-center gap-1.5">
+              <KeyRound className="w-3.5 h-3.5 text-primary" />
+              <span>Demo Student:</span>
+            </span>
+            <button
+              type="button"
+              onClick={handleQuickStudent}
+              className="text-primary hover:underline font-medium"
+            >
+              Fill Credentials (jatin)
+            </button>
+          </div>
+
+          {/* Navigation to Register */}
+          <div className="pt-2 text-center">
+            <p className="text-sm text-muted-foreground">
+              Don't have an account yet?{" "}
+              <Link to="/register" className="text-primary font-semibold hover:underline">
+                Get Started
+              </Link>
+            </p>
+          </div>
+
+          {/* Admin Portal Gateway Link */}
+          <div className="pt-4 border-t border-border/60 text-center">
+            <p className="text-xs text-muted-foreground">
+              Platform administrator or instructor?
+            </p>
+            <Link
+              to="/admin/login"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground mt-1 transition-colors"
+            >
+              <Shield className="w-3.5 h-3.5 text-primary" />
+              <span>Sign In to Admin Portal &rarr;</span>
+            </Link>
+          </div>
         </motion.div>
       </div>
     </div>

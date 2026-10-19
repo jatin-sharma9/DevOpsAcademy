@@ -69,15 +69,27 @@ export default function LessonViewPage() {
         
         // Try backend progress sync
         try {
-          const beProgress = await apiService.enrollments.getCourseProgress(Number(resolvedCourse.id));
-          if (beProgress.success && beProgress.data?.completedLessons) {
-            beProgress.data.completedLessons.forEach((id: number) => localCompleted.add(String(id)));
+          const beProgress = await apiService.enrollments.getCourseProgress(resolvedCourse.slug || resolvedCourse.id);
+          if (beProgress.success && beProgress.data) {
+            const authoritative = new Set<string>();
+            if (Array.isArray(beProgress.data.completedIdentifiers)) {
+              beProgress.data.completedIdentifiers.forEach((id: string) => authoritative.add(String(id)));
+            }
+            if (Array.isArray(beProgress.data.completedLessons)) {
+              beProgress.data.completedLessons.forEach((id: number) => authoritative.add(String(id)));
+            }
+            if (Array.isArray(beProgress.data.completedLessonIds)) {
+              beProgress.data.completedLessonIds.forEach((id: number) => authoritative.add(String(id)));
+            }
+            localCompleted.clear();
+            authoritative.forEach(id => localCompleted.add(id));
+            lmsStore.setCompletedLessons(resolvedCourse.slug, Array.from(authoritative), beProgress.data.progress || 0);
           }
         } catch {
           // Keep local store progress
         }
 
-        setCompletedLessons(localCompleted);
+        setCompletedLessons(new Set(localCompleted));
 
         // Determine active lesson
         const allLessons = resolvedCourse.sections.flatMap((s: any) => s.lessons);
@@ -215,8 +227,9 @@ export default function LessonViewPage() {
 
     // 2. Sync to backend if available
     try {
-      if (course.id && !isNaN(Number(course.id))) {
-        await apiService.enrollments.markComplete(Number(course.id), Number(lessonId));
+      const courseIdentifier = course.slug || course.id;
+      if (courseIdentifier) {
+        await apiService.enrollments.markComplete(courseIdentifier, lessonId);
       }
     } catch {
       // Offline fallback already updated local storage
@@ -242,11 +255,12 @@ export default function LessonViewPage() {
     const updatedCompleted = new Set(enrollment.completedLessons.map(String));
     setCompletedLessons(updatedCompleted);
 
+    const courseIdentifier = course.slug || course.id;
     if (completed) {
       toast.success("Lesson marked as completed!");
       try {
-        if (course.id && !isNaN(Number(course.id))) {
-          await apiService.enrollments.markComplete(Number(course.id), Number(lessonId));
+        if (courseIdentifier) {
+          await apiService.enrollments.markComplete(courseIdentifier, lessonId);
         }
       } catch {}
       if (updatedCompleted.size >= totalLessons) {
@@ -255,8 +269,8 @@ export default function LessonViewPage() {
     } else {
       toast.info("Lesson marked as incomplete");
       try {
-        if (course.id && !isNaN(Number(course.id))) {
-          await apiService.enrollments.markIncomplete(Number(course.id), Number(lessonId));
+        if (courseIdentifier) {
+          await apiService.enrollments.markIncomplete(courseIdentifier, lessonId);
         }
       } catch {}
     }

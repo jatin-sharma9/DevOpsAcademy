@@ -46,8 +46,8 @@ export default function StudentDashboardPage() {
         if (coursesRes.success && Array.isArray(coursesRes.data) && coursesRes.data.length > 0) {
           setCourses(coursesRes.data.map(mapBackendCourseToFrontend));
         }
-        if (enrollmentsRes.success && Array.isArray(enrollmentsRes.data) && enrollmentsRes.data.length > 0) {
-          // Merge backend enrollments
+        if (enrollmentsRes.success && Array.isArray(enrollmentsRes.data)) {
+          // Backend enrollments are authoritative for the logged-in student
           const mappedBackend = enrollmentsRes.data.map((e: any) => ({
             courseId: e.course_id,
             courseSlug: e.slug || '',
@@ -55,18 +55,7 @@ export default function StudentDashboardPage() {
             progress: e.progress || 0,
             completedLessons: [],
           }));
-          setLocalEnrollments(prev => {
-            const combined = [...prev];
-            mappedBackend.forEach((be: any) => {
-              const idx = combined.findIndex(ce => (be.courseId && Number(ce.courseId) === Number(be.courseId)) || (be.courseSlug && ce.courseSlug === be.courseSlug));
-              if (idx >= 0) {
-                combined[idx].progress = Math.max(combined[idx].progress, be.progress);
-              } else {
-                combined.push(be);
-              }
-            });
-            return combined;
-          });
+          setLocalEnrollments(mappedBackend);
         }
         // Prefer real PostgreSQL streak over the localStorage mock
         if (trackerRes.success && trackerRes.data?.stats?.streak) {

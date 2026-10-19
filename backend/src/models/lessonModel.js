@@ -128,12 +128,46 @@ export const Lesson = {
 
   async getCompletedLessons(userId, courseId) {
     const res = await query(
-      `SELECT lc.lesson_id, lc.completed_at
+      `SELECT lc.lesson_id, lc.completed_at, l.sort_order, l.slug
        FROM lesson_completions lc
        JOIN lessons l ON lc.lesson_id = l.id
-       WHERE lc.user_id = $1 AND l.course_id = $2`,
+       WHERE lc.user_id = $1 AND l.course_id = $2
+       ORDER BY l.sort_order ASC`,
       [userId, courseId]
     );
     return res.rows;
+  },
+
+  async resolveLesson(courseId, identifier) {
+    if (identifier === undefined || identifier === null) return null;
+
+    // Check if numeric or pure digits string
+    const num = parseInt(identifier, 10);
+    if (!isNaN(num) && (typeof identifier === 'number' || /^\d+$/.test(String(identifier).trim()))) {
+      const byId = await this.findById(num);
+      if (byId && (!courseId || byId.course_id === Number(courseId))) {
+        return byId;
+      }
+    }
+
+    // Try lookup by slug or module order
+    if (courseId) {
+      const cleanSlug = String(identifier).trim();
+      const bySlug = await this.findBySlug(courseId, cleanSlug);
+      if (bySlug) return bySlug;
+
+      // Try format like "linux_mod_01" -> order 1
+      const modMatch = cleanSlug.match(/(?:^|_)mod(?:ule)?_?0*(\d+)/i);
+      if (modMatch) {
+        const orderNum = parseInt(modMatch[1], 10);
+        const res = await query(
+          'SELECT * FROM lessons WHERE course_id = $1 AND sort_order = $2',
+          [courseId, orderNum]
+        );
+        if (res.rows[0]) return res.rows[0];
+      }
+    }
+
+    return null;
   }
 };

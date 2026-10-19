@@ -1,5 +1,5 @@
 import React from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 
@@ -35,6 +35,7 @@ import LegalPage from "@/pages/LegalPage";
 import NotFoundPage from "@/pages/NotFoundPage";
 
 // Admin Pages
+import AdminLoginPage from "@/pages/admin/AdminLoginPage";
 import AdminDashboardPage from "@/pages/admin/AdminDashboardPage";
 import AdminCoursesPage from "@/pages/admin/AdminCoursesPage";
 import AdminAddCoursePage from "@/pages/admin/AdminAddCoursePage";
@@ -51,6 +52,8 @@ import AdminSettingsPage from "@/pages/admin/AdminSettingsPage";
 
 function ProtectedRoute({ children, roles }: { children: React.ReactNode; roles?: string[] }) {
   const { user, isAuthenticated, isLoading } = useAuth();
+  const location = useLocation();
+
   if (isLoading) return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <div className="flex flex-col items-center gap-4">
@@ -59,7 +62,12 @@ function ProtectedRoute({ children, roles }: { children: React.ReactNode; roles?
       </div>
     </div>
   );
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
+
+  if (!isAuthenticated) {
+    const isTargetAdmin = roles?.includes("admin") || location.pathname.startsWith("/admin");
+    return <Navigate to={isTargetAdmin ? "/admin/login" : "/login"} state={{ from: location }} replace />;
+  }
+
   if (roles && user && !roles.includes(user.role)) return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
 }
@@ -95,6 +103,7 @@ function AppRoutes() {
       {/* Auth Routes */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/admin/login" element={<AdminLoginPage />} />
 
       {/* Student Routes */}
       <Route element={<MainLayout />}>

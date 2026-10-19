@@ -137,12 +137,22 @@ export const getAllEnrollments = async (req, res) => {
 export const markLessonComplete = async (req, res) => {
   try {
     const { courseId: rawCourseId, lessonId: rawLessonId } = req.body;
-    const courseId = parseInt(rawCourseId, 10);
-    const lessonId = parseInt(rawLessonId, 10);
-
-    if (isNaN(courseId) || isNaN(lessonId)) {
-      return res.status(400).json({ success: false, message: 'Valid Course ID and Lesson ID are required' });
+    let courseId = parseInt(rawCourseId, 10);
+    if (isNaN(courseId)) {
+      const course = await Course.findBySlug(rawCourseId);
+      if (course) courseId = course.id;
     }
+
+    if (isNaN(courseId)) {
+      return res.status(400).json({ success: false, message: 'Valid Course ID or slug is required' });
+    }
+
+    const resolvedLesson = await Lesson.resolveLesson(courseId, rawLessonId);
+    if (!resolvedLesson) {
+      return res.status(404).json({ success: false, message: `Lesson '${rawLessonId}' not found for course` });
+    }
+
+    const lessonId = resolvedLesson.id;
 
     // Auto-enroll student if not enrolled yet
     const enrollments = await Enrollment.findByUserId(req.user.id);
@@ -177,6 +187,18 @@ export const markLessonComplete = async (req, res) => {
       }
     }
 
+    const completedLessonIds = completedLessons.map(l => l.lesson_id);
+    const completedIdentifiers = [];
+    completedLessons.forEach(cl => {
+      completedIdentifiers.push(String(cl.lesson_id));
+      if (cl.slug) completedIdentifiers.push(cl.slug);
+      if (cl.sort_order) {
+        const pad = String(cl.sort_order).padStart(2, '0');
+        completedIdentifiers.push(`linux_mod_${pad}`);
+        completedIdentifiers.push(`mod_${pad}`);
+      }
+    });
+
     res.status(200).json({
       success: true,
       data: {
@@ -184,7 +206,10 @@ export const markLessonComplete = async (req, res) => {
         completedCount,
         totalLessons,
         progress,
-        certificate,
+        completedLessonIds,
+        completedLessons: completedLessonIds,
+        completedIdentifiers,
+        certificate: certificate || null,
       },
     });
   } catch (error) {
@@ -200,12 +225,22 @@ export const markLessonComplete = async (req, res) => {
 export const markLessonIncomplete = async (req, res) => {
   try {
     const { courseId: rawCourseId, lessonId: rawLessonId } = req.body;
-    const courseId = parseInt(rawCourseId, 10);
-    const lessonId = parseInt(rawLessonId, 10);
-
-    if (isNaN(courseId) || isNaN(lessonId)) {
-      return res.status(400).json({ success: false, message: 'Valid Course ID and Lesson ID are required' });
+    let courseId = parseInt(rawCourseId, 10);
+    if (isNaN(courseId)) {
+      const course = await Course.findBySlug(rawCourseId);
+      if (course) courseId = course.id;
     }
+
+    if (isNaN(courseId)) {
+      return res.status(400).json({ success: false, message: 'Valid Course ID or slug is required' });
+    }
+
+    const resolvedLesson = await Lesson.resolveLesson(courseId, rawLessonId);
+    if (!resolvedLesson) {
+      return res.status(404).json({ success: false, message: `Lesson '${rawLessonId}' not found for course` });
+    }
+
+    const lessonId = resolvedLesson.id;
 
     await Lesson.markIncomplete(req.user.id, lessonId);
 
@@ -219,6 +254,18 @@ export const markLessonIncomplete = async (req, res) => {
 
     const updatedEnrollment = await Enrollment.updateProgress(req.user.id, courseId, progress);
 
+    const completedLessonIds = completedLessons.map(l => l.lesson_id);
+    const completedIdentifiers = [];
+    completedLessons.forEach(cl => {
+      completedIdentifiers.push(String(cl.lesson_id));
+      if (cl.slug) completedIdentifiers.push(cl.slug);
+      if (cl.sort_order) {
+        const pad = String(cl.sort_order).padStart(2, '0');
+        completedIdentifiers.push(`linux_mod_${pad}`);
+        completedIdentifiers.push(`mod_${pad}`);
+      }
+    });
+
     res.status(200).json({
       success: true,
       data: {
@@ -226,6 +273,10 @@ export const markLessonIncomplete = async (req, res) => {
         completedCount,
         totalLessons,
         progress,
+        completedLessonIds,
+        completedLessons: completedLessonIds,
+        completedIdentifiers,
+        certificate: null,
       },
     });
   } catch (error) {
@@ -240,9 +291,14 @@ export const markLessonIncomplete = async (req, res) => {
  */
 export const getCourseProgress = async (req, res) => {
   try {
-    const courseId = parseInt(req.params.courseId, 10);
+    let courseId = parseInt(req.params.courseId, 10);
     if (isNaN(courseId)) {
-      return res.status(400).json({ success: false, message: 'Invalid course ID' });
+      const course = await Course.findBySlug(req.params.courseId);
+      if (course) courseId = course.id;
+    }
+
+    if (isNaN(courseId)) {
+      return res.status(400).json({ success: false, message: 'Invalid course ID or slug' });
     }
 
     const lessons = await Lesson.findAllByCourseId(courseId);
@@ -254,6 +310,18 @@ export const getCourseProgress = async (req, res) => {
 
     const certificate = await Certificate.findByUserAndCourse(req.user.id, courseId);
 
+    const completedLessonIds = completedLessons.map(l => l.lesson_id);
+    const completedIdentifiers = [];
+    completedLessons.forEach(cl => {
+      completedIdentifiers.push(String(cl.lesson_id));
+      if (cl.slug) completedIdentifiers.push(cl.slug);
+      if (cl.sort_order) {
+        const pad = String(cl.sort_order).padStart(2, '0');
+        completedIdentifiers.push(`linux_mod_${pad}`);
+        completedIdentifiers.push(`mod_${pad}`);
+      }
+    });
+
     res.status(200).json({
       success: true,
       data: {
@@ -261,8 +329,10 @@ export const getCourseProgress = async (req, res) => {
         totalLessons,
         completedCount,
         progress,
-        completedLessonIds: completedLessons.map(l => l.lesson_id),
-        certificate,
+        completedLessonIds,
+        completedLessons: completedLessonIds,
+        completedIdentifiers,
+        certificate: certificate || null,
       },
     });
   } catch (error) {

@@ -254,15 +254,15 @@ export const apiService = {
       const res = await api.get('/enrollments/my');
       return res.data;
     },
-    async getCourseProgress(courseId: number) {
+    async getCourseProgress(courseId: number | string) {
       const res = await api.get(`/enrollments/courses/${courseId}/progress`);
       return res.data;
     },
-    async markComplete(courseId: number, lessonId: number) {
+    async markComplete(courseId: number | string, lessonId: number | string) {
       const res = await api.post('/enrollments/lessons/complete', { courseId, lessonId });
       return res.data;
     },
-    async markIncomplete(courseId: number, lessonId: number) {
+    async markIncomplete(courseId: number | string, lessonId: number | string) {
       const res = await api.post('/enrollments/lessons/incomplete', { courseId, lessonId });
       return res.data;
     },
