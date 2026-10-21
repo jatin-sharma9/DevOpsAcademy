@@ -62,6 +62,10 @@ jobs:
       DB_PASSWORD: postgres_ci_test_password
       JWT_SECRET: devops_academy_ci_test_jwt_secret_key_32chars_long!
       JWT_EXPIRES_IN: 7d
+      DEFAULT_ADMIN_USERNAME: Jatin_Sharma
+      DEFAULT_ADMIN_PASSWORD: J@tinS93
+      TEST_ADMIN_IDENTIFIER: Jatin_Sharma
+      TEST_ADMIN_PASSWORD: J@tinS93
 
     steps:
       - name: Checkout Codebase

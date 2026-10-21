@@ -40,11 +40,14 @@ async function runTests() {
 
   try {
     // 0. Login as Admin
+    const adminIdentifier = process.env.TEST_ADMIN_IDENTIFIER || process.env.DEFAULT_ADMIN_USERNAME;
+    const adminPassword = process.env.TEST_ADMIN_PASSWORD || process.env.DEFAULT_ADMIN_PASSWORD;
+
     const loginRes = await request('/auth/login', {
       method: 'POST',
       body: {
-        identifier: process.env.TEST_ADMIN_IDENTIFIER,
-        password: process.env.TEST_ADMIN_PASSWORD,
+        identifier: adminIdentifier,
+        password: adminPassword,
       },
     });
     const adminToken = loginRes.data?.token;
@@ -70,33 +73,35 @@ async function runTests() {
       },
     });
     assert(newCatRes.status === 201, 'POST /api/categories returns 201 Created');
-    assert(newCatRes.data.data.slug === 'service-mesh', 'Created category slug is service-mesh');
-    const createdCatId = newCatRes.data.data.id;
+    assert(newCatRes.data?.data?.slug === 'service-mesh', 'Created category slug is service-mesh');
+    const createdCatId = newCatRes.data?.data?.id;
 
     // Update Category
-    const updateCatRes = await request(`/categories/${createdCatId}`, {
-      method: 'PUT',
-      headers: adminHeaders,
-      body: {
-        name: 'Service Mesh & Envoy',
-        description: 'Updated description for service mesh curriculum.',
-      },
-    });
-    assert(updateCatRes.status === 200, 'PUT /api/categories/:id returns 200 OK');
-    assert(updateCatRes.data.data.name === 'Service Mesh & Envoy', 'Updated category name correctly');
+    if (createdCatId) {
+      const updateCatRes = await request(`/categories/${createdCatId}`, {
+        method: 'PUT',
+        headers: adminHeaders,
+        body: {
+          name: 'Service Mesh & Envoy',
+          description: 'Updated description for service mesh curriculum.',
+        },
+      });
+      assert(updateCatRes.status === 200, 'PUT /api/categories/:id returns 200 OK');
+      assert(updateCatRes.data?.data?.name === 'Service Mesh & Envoy', 'Updated category name correctly');
 
-    // Delete Category
-    const delCatRes = await request(`/categories/${createdCatId}`, {
-      method: 'DELETE',
-      headers: adminHeaders,
-    });
-    assert(delCatRes.status === 200, 'DELETE /api/categories/:id returns 200 OK');
+      // Delete Category
+      const delCatRes = await request(`/categories/${createdCatId}`, {
+        method: 'DELETE',
+        headers: adminHeaders,
+      });
+      assert(delCatRes.status === 200, 'DELETE /api/categories/:id returns 200 OK');
+    }
 
     // 2. Admin Certificates API
     console.log('\n--- TEST SUITE 2: Admin Certificates API ---');
     const certListRes = await request('/admin/certificates', { headers: adminHeaders });
     assert(certListRes.status === 200, 'GET /api/admin/certificates returns 200 OK');
-    assert(certListRes.data.success === true, 'Certificates response success: true');
+    assert(certListRes.data?.success === true, 'Certificates response success: true');
 
     // Issue certificate
     const issueCertRes = await request('/admin/certificates', {
@@ -109,15 +114,17 @@ async function runTests() {
       },
     });
     assert(issueCertRes.status === 201, 'POST /api/admin/certificates returns 201 Created');
-    assert(issueCertRes.data.data.hash.startsWith('DEV-'), 'Generated certificate has cryptographic DEV- prefix');
-    const createdCertId = issueCertRes.data.data.dbId;
+    assert(Boolean(issueCertRes.data?.data?.hash?.startsWith('DEV-')), 'Generated certificate has cryptographic DEV- prefix');
+    const createdCertId = issueCertRes.data?.data?.dbId;
 
     // Delete certificate
-    const delCertRes = await request(`/admin/certificates/${createdCertId}`, {
-      method: 'DELETE',
-      headers: adminHeaders,
-    });
-    assert(delCertRes.status === 200, 'DELETE /api/admin/certificates/:id returns 200 OK');
+    if (createdCertId) {
+      const delCertRes = await request(`/admin/certificates/${createdCertId}`, {
+        method: 'DELETE',
+        headers: adminHeaders,
+      });
+      assert(delCertRes.status === 200, 'DELETE /api/admin/certificates/:id returns 200 OK');
+    }
 
     // 3. Admin Analytics API
     console.log('\n--- TEST SUITE 3: Admin Analytics API ---');
