@@ -1,3 +1,4 @@
+
 groups:
   - name: system-alerts
     rules:
@@ -9,3 +10,12 @@ groups:
         annotations:
           summary: "High CPU usage on Ubuntu"
           description: "CPU usage has remained above 80% for 5 minutes."
+
+      - alert: NodeExporterDown
+        expr: up{job="node-exporter"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Node Exporter is down"
+          description: "Prometheus cannot scrape the Node Exporter target."
