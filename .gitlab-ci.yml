@@ -1,0 +1,10 @@
+
+stages:
+  - test
+
+hello_world:
+  stage: test
+  image: alpine:latest
+  script:
+    - echo "Hello Jatin!"
+    - echo "DevOps Academy GitLab CI/CD pipeline is running."
